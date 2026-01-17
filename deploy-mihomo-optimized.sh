@@ -2687,13 +2687,13 @@ change_subscription_action() {
     log_info "订阅链接已更新到配置文件"
   fi
 
-  # 更新 YAML 配置文件
+  # 更新 YAML 配置文件（精确匹配 proxy-providers 下的 url）
   local yaml_file="$CONFIG_DIR/config.yaml"
   if [ -f "$yaml_file" ]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s|url:.*|url: $new_url|" "$yaml_file"
+      sed -i '' "s|^    url: \".*\"|    url: \"$new_url\"|" "$yaml_file"
     else
-      sed -i "s|url:.*|url: $new_url|" "$yaml_file"
+      sed -i "s|^    url: \".*\"|    url: \"$new_url\"|" "$yaml_file"
     fi
     log_info "YAML 配置文件已更新"
   fi
