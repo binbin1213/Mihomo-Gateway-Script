@@ -1567,7 +1567,7 @@ dns:
     - +.lan
     - +.local
     - geosite:cn
-  fake-ip-filter-mode: blacklist
+  fake-ip-filter-mode: rule
   nameserver:
     - 223.5.5.5
     - 119.29.29.29
