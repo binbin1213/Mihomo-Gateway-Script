@@ -2698,6 +2698,13 @@ change_subscription_action() {
     log_info "YAML 配置文件已更新"
   fi
 
+  # 删除旧的订阅缓存文件，让 mihomo 重新下载
+  local sub_file="$CONFIG_DIR/proxy_providers/sub.yaml"
+  if [ -f "$sub_file" ]; then
+    rm -f "$sub_file"
+    log_info "已删除旧的订阅缓存，重启后将重新下载"
+  fi
+
   # 重启 mihomo 服务
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl is-active --quiet mihomo 2>/dev/null; then
