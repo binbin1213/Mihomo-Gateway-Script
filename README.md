@@ -11,6 +11,9 @@
                       │                     │
                       ↓                     ↓
                   DNS服务              国内直走/国外代理
+                      │
+                      ↓
+                  广告拦截（内置）
 ```
 
 **核心流程：**
@@ -18,6 +21,10 @@
 2. 所有流量经过 Mihomo 网关
 3. 根据规则自动分流（国内直连，国外走代理）
 4. 支持策略组自动测速选择最优节点
+
+**广告拦截机制：**
+- Mihomo 内置广告拦截规则（Block.list），无需额外配置
+- 可选集成 AdGuardHome 获得更强大的过滤能力（详见下方说明）
 
 ## 快速开始
 
@@ -58,6 +65,7 @@ sudo ./deploy-mihomo-optimized.sh --mode binary   # Binary 模式
 | Mihomo 镜像 | Docker 镜像地址 | `metacubex/mihomo:latest` |
 | 配置目录 | 配置文件存放位置 | `/opt/mihomo` |
 | GitHub 代理 | 加速资源下载（可选） | `https://gh-proxy.com` |
+| **AdGuardHome 集成** | 上游 DNS 过滤（可选） | `192.168.1.x` / 留空 |
 | **配置模板类型** | 基础/地区分组 | `basic` / `region` |
 | **地区分组策略** | 启用地区节点分组（仅 region 模板） | `yes` / `no` |
 | Smart 策略 | 智能选择策略（实验性） | `yes` / `no` |
@@ -84,6 +92,71 @@ sudo ./deploy-mihomo-optimized.sh --mode binary   # Binary 模式
 | 美国 | ✅ | ✅ | ✅ |
 | 英国 | ✅ | ✅ | ✅ |
 | 其他 | ✅ | ✅ | ✅ |
+
+## AdGuardHome 集成说明
+
+### 什么是 AdGuardHome 集成？
+
+AdGuardHome 是一个网络范围的广告和追踪器屏蔽软件。本项目支持将其作为 Mihomo 的上游 DNS 服务器。
+
+### 架构对比
+
+**不使用 AdGuardHome（默认）：**
+```
+设备 → Mihomo → 公共DNS（223.5.5.5/119.29.29.29）
+               ↓
+         内置广告拦截（Block.list）
+```
+
+**使用 AdGuardHome：**
+```
+设备 → Mihomo → AdGuardHome → 公共DNS
+               ↓              ↓
+         内置拦截      额外过滤层
+```
+
+### 功能对比
+
+| 功能 | Mihomo 内置 | + AdGuardHome |
+|------|-------------|---------------|
+| 广告拦截 | ✅ Block.list | ✅✅ 双重过滤 |
+| 自定义规则 | ⚠️ 需手动编辑 | ✅ Web 界面 |
+| 查询日志 | ❌ | ✅ 详细日志 |
+| 全屋过滤 | ❌ 仅 Mihomo 设备 | ✅ 所有设备 |
+
+### 如何选择？
+
+**不需要 AdGuardHome：**
+- 只用 Mihomo 网关的设备上网
+- 对广告拦截要求不高
+- 希望配置简单
+
+**需要 AdGuardHome：**
+- 家庭网络多设备需要过滤
+- 需要精细控制每个设备的 DNS
+- 需要 Web 界面管理规则
+- 需要查看 DNS 查询日志
+
+### 配置示例
+
+部署时输入 AdGuardHome IP（如 `192.168.1.98`），生成的配置：
+
+```yaml
+# DNS 配置
+nameserver:
+  - 192.168.1.98    # AdGuardHome
+  - 192.168.1.1    # 备用网关
+
+# 规则配置
+- IP-CIDR,192.168.1.98/32,DIRECT,no-resolve  # 访问 AdGuardHome 直连
+```
+
+### 注意事项
+
+1. AdGuardHome 需要单独部署，脚本不自动安装
+2. AdGuardHome IP 必须在局域网内且可访问
+3. 启用后，所有 DNS 查询会多跳一跳，延迟略有增加
+4. 不影响 Mihomo 自带的 Block.list 广告拦截功能
 
 ## 客户端配置
 
