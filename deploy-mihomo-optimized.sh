@@ -2639,6 +2639,84 @@ disable_auto_update_action() {
   log_info "自动更新已禁用"
 }
 
+# 修改订阅链接
+change_subscription_action() {
+  log_info "修改订阅链接..."
+
+  # 查找配置目录
+  local cfg=""
+  for cfg in /opt/mihomo/.deploy_config /volume1/docker/mihomo/.deploy_config /root/mihomo/.deploy_config /etc/mihomo/.deploy_config; do
+    if [ -f "$cfg" ]; then
+      load_saved_config "$cfg" || true
+      break
+    fi
+  done
+
+  if [ -z "${CONFIG_DIR:-}" ]; then
+    error_exit "未找到配置目录，请先安装"
+  fi
+
+  printf "\n"
+  printf "%s\n" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  printf "%s\n" "  修改订阅链接"
+  printf "%s\n" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  printf "\n"
+  printf "当前订阅链接: %s\n" "${SUB_URL:-未设置}"
+  printf "\n"
+
+  local new_url
+  new_url="$(prompt "新的订阅链接" "")"
+
+  if [ -z "$new_url" ]; then
+    log_info "订阅链接未修改"
+    return 0
+  fi
+
+  # 验证 URL
+  new_url="$(sanitize_url "$new_url")"
+
+  # 更新配置文件
+  local saved_config="$CONFIG_DIR/.deploy_config"
+  if [ -f "$saved_config" ]; then
+    # 使用 sed 替换 SUB_URL
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^SUB_URL=.*|SUB_URL=\"$new_url\"|" "$saved_config"
+    else
+      sed -i "s|^SUB_URL=.*|SUB_URL=\"$new_url\"|" "$saved_config"
+    fi
+    log_info "订阅链接已更新到配置文件"
+  fi
+
+  # 更新 YAML 配置文件
+  local yaml_file="$CONFIG_DIR/config.yaml"
+  if [ -f "$yaml_file" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|url:.*|url: $new_url|" "$yaml_file"
+    else
+      sed -i "s|url:.*|url: $new_url|" "$yaml_file"
+    fi
+    log_info "YAML 配置文件已更新"
+  fi
+
+  # 重启 mihomo 服务
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet mihomo 2>/dev/null; then
+      log_info "重启 mihomo 服务..."
+      systemctl restart mihomo
+      log_info "mihomo 服务已重启"
+    fi
+  elif command -v docker >/dev/null 2>&1; then
+    if docker ps --format '{{.Names}}' | grep -qx mihomo 2>/dev/null; then
+      log_info "重启 mihomo 容器..."
+      docker restart mihomo
+      log_info "mihomo 容器已重启"
+    fi
+  fi
+
+  log_info "订阅链接修改完成！"
+  printf "\n新订阅链接: %s\n" "$new_url"
+}
+
 select_menu_action() {
   printf "\n"
   printf "%s\n" "请选择要执行的操作："
@@ -2646,8 +2724,9 @@ select_menu_action() {
   printf "%s\n" "2) 一键更新（模板文件 + mihomo 二进制）"
   printf "%s\n" "3) 启用自动更新（cron 任务）"
   printf "%s\n" "4) 禁用自动更新"
-  printf "%s\n" "5) 一键卸载（彻底清理）"
-  printf "%s\n" "6) 命令大全（脚本所有命令）"
+  printf "%s\n" "5) 修改订阅链接"
+  printf "%s\n" "6) 一键卸载（彻底清理）"
+  printf "%s\n" "7) 命令大全（脚本所有命令）"
   printf "\n"
 
   local choice
@@ -2657,8 +2736,9 @@ select_menu_action() {
     2) ACTION="update" ;;
     3) ACTION="enable_auto_update" ;;
     4) ACTION="disable_auto_update" ;;
-    5) ACTION="uninstall" ;;
-    6) ACTION="commands" ;;
+    5) ACTION="change_subscription" ;;
+    6) ACTION="uninstall" ;;
+    7) ACTION="commands" ;;
     *) ACTION="install" ;;
   esac
 }
@@ -2860,6 +2940,10 @@ main() {
       ;;
     disable_auto_update)
       disable_auto_update_action
+      return 0
+      ;;
+    change_subscription)
+      change_subscription_action
       return 0
       ;;
     install)
