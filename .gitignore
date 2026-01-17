@@ -1,3 +1,37 @@
+# IDE 和编辑器
 .claude/
-.DS_Store
 .serena/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 审计和安全报告（本地保留，不上传）
+*审计*.md
+*审计*.txt
+*security*.md
+*audit*.md
+
+# 日志文件
+*.log
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# 备份文件
+*.bak
+*.backup
+
+# 配置文件（包含敏感信息，示例文件除外）
+*.secret
+*.credentials
+.env.local
