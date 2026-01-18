@@ -2421,6 +2421,16 @@ uninstall_mihomo() {
     run_cmd "rm -f /usr/bin/mihomo" || true
   fi
 
+  # 删除下载的模板文件
+  if [ -f "$SCRIPT_DIR/config-region.yaml.tpl" ]; then
+    log_info "删除模板文件: config-region.yaml.tpl"
+    run_cmd "rm -f '$SCRIPT_DIR/config-region.yaml.tpl'" || true
+  fi
+  if [ -f "$SCRIPT_DIR/config.yaml.tpl" ]; then
+    log_info "删除模板文件: config.yaml.tpl"
+    run_cmd "rm -f '$SCRIPT_DIR/config.yaml.tpl'" || true
+  fi
+
   # 删除 Docker 网络
   if command -v docker >/dev/null 2>&1; then
     if docker network ls --format '{{.Name}}' | grep -qx mihomo-macvlan 2>/dev/null; then
