@@ -9,8 +9,8 @@ set -euo pipefail
 # =============================================================================
 
 VERSION="2.0.0"
-SCRIPT_NAME="$(basename "$0")"
-SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd || true)"
 
 # TTY 设备
 TTY="/dev/tty"
