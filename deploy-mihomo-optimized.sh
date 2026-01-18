@@ -129,11 +129,14 @@ run_cmd() {
 
   # 使用 eval 替代 sh -c，eval 在 bash 中更安全
   # 同时设置错误处理
-  if ! eval "$cmd"; then
-    local exit_code=$?
+  eval "$cmd"
+  local exit_code=$?
+  if [ $exit_code -ne 0 ]; then
     log_error "命令执行失败 (退出码: $exit_code): $cmd"
     return $exit_code
   fi
+
+  return 0
 }
 
 # 带重试的网络请求
@@ -1869,6 +1872,15 @@ deploy_docker_mode() {
   need_cmd docker
 
   local network_name="mihomo-macvlan"
+  local tz_mounts=""
+  if [ -e /etc/localtime ]; then
+    tz_mounts="$tz_mounts -v /etc/localtime:/etc/localtime:ro"
+  fi
+  if [ -f /etc/timezone ]; then
+    tz_mounts="$tz_mounts -v /etc/timezone:/etc/timezone:ro"
+  else
+    log_warn "/etc/timezone 不存在，跳过挂载（DSM 常见）"
+  fi
 
   # 创建 macvlan 网络
   if docker network inspect "$network_name" >/dev/null 2>&1; then
@@ -1897,8 +1909,7 @@ deploy_docker_mode() {
     --sysctl net.ipv4.ip_forward=1 \
     --sysctl net.ipv4.conf.all.src_valid_mark=1 \
     -e TZ=Asia/Shanghai \
-    -v /etc/localtime:/etc/localtime:ro \
-    -v /etc/timezone:/etc/timezone:ro \
+    $tz_mounts \
     -v '$CONFIG_DIR:/root/.config/mihomo' \
     '$MIHOMO_IMAGE'" || error_exit "启动容器失败"
 
@@ -2683,6 +2694,15 @@ update_mihomo_binary() {
 
 update_mihomo_docker() {
   need_cmd docker
+  local tz_mounts=""
+  if [ -e /etc/localtime ]; then
+    tz_mounts="$tz_mounts -v /etc/localtime:/etc/localtime:ro"
+  fi
+  if [ -f /etc/timezone ]; then
+    tz_mounts="$tz_mounts -v /etc/timezone:/etc/timezone:ro"
+  else
+    log_warn "/etc/timezone 不存在，跳过挂载（DSM 常见）"
+  fi
 
   if ! docker ps -a --format '{{.Names}}' | grep -qx mihomo; then
     error_exit "未找到 mihomo 容器，无法执行 Docker 更新"
@@ -2723,8 +2743,7 @@ update_mihomo_docker() {
     --sysctl net.ipv4.ip_forward=1 \
     --sysctl net.ipv4.conf.all.src_valid_mark=1 \
     -e TZ=Asia/Shanghai \
-    -v /etc/localtime:/etc/localtime:ro \
-    -v /etc/timezone:/etc/timezone:ro \
+    $tz_mounts \
     -v '$config_dir:/root/.config/mihomo' \
     '$image'" || error_exit "启动容器失败"
 
