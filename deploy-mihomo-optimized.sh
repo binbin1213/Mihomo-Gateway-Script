@@ -2352,7 +2352,7 @@ uninstall_mihomo() {
   fi
 
   printf "%s\n" ""
-  printf "%s\n" "警告：此操作将删除 Mihomo 及其配置。"
+  printf "\033[31m%s\033[0m\n" "警告：此操作将删除 Mihomo 及其配置。"
   printf "%s" "确认卸载？[y/N] "
   read -r confirm
 
