@@ -879,7 +879,7 @@ save_config() {
     python_script="import json, os, datetime"$
     python_script="$python_script; data = {"$
     for var in "${vars[@]}"; do
-      local value="${!var}"
+      local value="${!var-}"
       # 转义特殊字符
       value="${value//\\/\\\\}"
       value="${value//\"/\\\"}"
@@ -919,7 +919,7 @@ PYEOF
       printf "{\n"
       local i=0
       for var in "${vars[@]}"; do
-        local value="${!var}"
+        local value="${!var-}"
         # 转义 JSON 特殊字符
         value="${value//\\/\\\\}"
         value="${value//\"/\\\"}"
