@@ -100,6 +100,9 @@ proxies:
 # =============================================================================
 
 proxy-groups:
+  # Smart 策略组（可选）
+{{SMART_GROUP_BLOCK}}
+
   # 业务分流组 - 默认策略（代理优先）
   - name: ChatGPT
     type: select

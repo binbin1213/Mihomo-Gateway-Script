@@ -1821,7 +1821,18 @@ generate_rules_config() {
 
   # Smart 策略配置
   SMART_PROXY_LINE=""
-  SMART_GROUP_BLOCK=""
+  SMART_GROUP_BLOCK="$(cat <<'EOF'
+  - name: 所有-智选
+    type: url-test
+    use:
+      - sub
+    url: "https://cp.cloudflare.com/generate_204"
+    interval: 300
+    tolerance: 0
+    filter: "^((?!(DIRECT|REJECT|直连|拒绝)).)*$"
+
+EOF
+)"
   if [ "$USE_SMART" = "yes" ]; then
     SMART_PROXY_LINE="- 所有-智选"
     SMART_GROUP_BLOCK="$(cat <<'EOF'
@@ -1829,7 +1840,7 @@ generate_rules_config() {
     type: smart
     use:
       - sub
-    filter: "^((?!(DIRECT|REJECT)).)*$"
+    filter: "^((?!(DIRECT|REJECT|直连|拒绝)).)*$"
 
 EOF
 )"
