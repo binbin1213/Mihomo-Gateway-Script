@@ -50,26 +50,26 @@ RETRY_DELAY=5
 log_info() {
   local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $*"
   printf "%s\n" "$msg"
-  [ -n "$LOG_FILE" ] && printf "%s\n" "$msg" >> "$LOG_FILE"
+  [ -n "$LOG_FILE" ] && mkdir -p "$(dirname "$LOG_FILE")" && printf "%s\n" "$msg" >> "$LOG_FILE"
 }
 
 log_warn() {
   local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] $*"
   printf "%s\n" "$msg" >&2
-  [ -n "$LOG_FILE" ] && printf "%s\n" "$msg" >> "$LOG_FILE"
+  [ -n "$LOG_FILE" ] && mkdir -p "$(dirname "$LOG_FILE")" && printf "%s\n" "$msg" >> "$LOG_FILE"
 }
 
 log_error() {
   local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*"
   printf "%s\n" "$msg" >&2
-  [ -n "$LOG_FILE" ] && printf "%s\n" "$msg" >> "$LOG_FILE"
+  [ -n "$LOG_FILE" ] && mkdir -p "$(dirname "$LOG_FILE")" && printf "%s\n" "$msg" >> "$LOG_FILE"
 }
 
 log_debug() {
   if [ "$VERBOSE" -eq 1 ]; then
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $*"
     printf "%s\n" "$msg" >&2
-    [ -n "$LOG_FILE" ] && printf "%s\n" "$msg" >> "$LOG_FILE"
+    [ -n "$LOG_FILE" ] && mkdir -p "$(dirname "$LOG_FILE")" && printf "%s\n" "$msg" >> "$LOG_FILE"
   fi
 }
 
