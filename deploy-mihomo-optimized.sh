@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Mihomo Gateway Script - Optimized Version
 # 改进：安全性、模块化、错误处理、日志系统
 
@@ -1035,6 +1035,157 @@ PY
 }
 
 # =============================================================================
+# 国家识别和动态策略组生成
+# =============================================================================
+
+# 国家关键词库（中文、英文、国旗emoji等多种变体）
+COUNTRY_KEYWORDS=(
+  "香港:香港|HK|Hong Kong|HongKong"
+  "台湾:台湾|台灣|TW|Tai Wan|TaiWan|Taiwan|🇨🇳"
+  "日本:日本|JP|Japan"
+  "新加坡:新加坡|SG|Singapore"
+  "美国:美国|US|USA|United States"
+  "韩国:韩国|KR|Korea"
+  "马来西亚:马来西亚|MY|Malaysia"
+  "菲律宾:菲律宾|PH|Philippines"
+  "阿根廷:阿根廷|AR|Argentina"
+  "柬埔寨:柬埔寨|KH|Cambodia"
+  "俄罗斯:俄罗斯|RU|Russia"
+  "德国:德国|DE|Germany"
+  "加拿大:加拿大|CA|Canada"
+  "印度尼西亚:印度尼西亚|ID|Indonesia"
+  "土耳其:土耳其|TR|Turkey"
+  "英国:英国|UK|United Kingdom"
+  "法国:法国|FR|France"
+  "迪拜:迪拜|UAE|Dubai"
+  "泰国:泰国|TH|Thailand"
+  "巴西:巴西|BR|Brazil"
+)
+
+# 从订阅文件中识别国家
+detect_countries_from_subscription() {
+  local sub_url="$1"
+  local config_dir="$2"
+  local sub_file="$config_dir/proxy_providers/sub.yaml"
+
+  log_info "解析订阅文件识别国家..."
+
+  # 如果订阅文件不存在，先下载
+  if [ ! -f "$sub_file" ]; then
+    log_info "下载订阅文件..."
+    mkdir -p "$(dirname "$sub_file")"
+    if ! download_file "$sub_url" "$sub_file" "false"; then
+      log_warn "下载订阅文件失败，使用默认国家列表"
+      return 0
+    fi
+  fi
+
+  # 解析订阅文件中的节点名称
+  local detected_countries=()
+  local proxy_names
+  proxy_names="$(grep "name:" "$sub_file" 2>/dev/null | sed 's/.*name: //' | sed 's/"//g' | sed "s/'//g")"
+
+  if [ -z "$proxy_names" ]; then
+    log_warn "未找到节点信息，使用默认国家列表"
+    return 0
+  fi
+
+  # 遍历所有国家关键词，检查是否在节点名称中出现
+  for entry in "${COUNTRY_KEYWORDS[@]}"; do
+    local country="${entry%%:*}"
+    local keywords="${entry#*:}"
+    if echo "$proxy_names" | grep -qiE "$keywords"; then
+      detected_countries+=("$country")
+      log_debug "识别到国家: $country"
+    fi
+  done
+
+  # 输出检测到的国家列表（通过全局变量）
+  DETECTED_COUNTRIES=("${detected_countries[@]}")
+
+  if [ ${#DETECTED_COUNTRIES[@]} -eq 0 ]; then
+    log_warn "未识别到任何国家，使用默认国家列表"
+    DETECTED_COUNTRIES=("香港" "台湾" "日本" "新加坡" "美国" "韩国")
+  else
+    log_info "识别到 ${#DETECTED_COUNTRIES[@]} 个国家: ${DETECTED_COUNTRIES[*]}"
+  fi
+
+  return 0
+}
+
+# 生成国家策略组配置
+generate_country_proxy_groups() {
+  local countries=("$@")
+  local output=""
+  local country_proxies_list=""
+
+  for country in "${countries[@]}"; do
+    local keywords=""
+    for entry in "${COUNTRY_KEYWORDS[@]}"; do
+      local entry_country="${entry%%:*}"
+      if [ "$entry_country" = "$country" ]; then
+        keywords="${entry#*:}"
+        break
+      fi
+    done
+
+    if [ -z "$keywords" ]; then
+      log_warn "未找到国家 $country 的关键词，跳过"
+      continue
+    fi
+
+    local country_escaped="${keywords//|/\\|}"
+
+    # 手选策略组
+    output+="
+  - name: ${country}-手选
+    type: select
+    use:
+      - sub
+    filter: \"(?=.*(${keywords})).*\"
+"
+
+    # 智选策略组（只选最快节点，tolerance=0）
+    output+="
+  - name: ${country}-智选
+    type: url-test
+    use:
+      - sub
+    url: \"https://cp.cloudflare.com/generate_204\"
+    interval: 300
+    tolerance: 0
+    filter: \"(?=.*(${keywords})).*\"
+"
+
+    # 故转策略组（兜底）
+    output+="
+  - name: ${country}-故转
+    type: fallback
+    interval: 300
+    lazy: false
+    use:
+      - sub
+    url: \"https://cp.cloudflare.com/generate_204\"
+    filter: \"(?=.*(${keywords})).*\"
+    proxies:
+      - ${country}-手选
+      - ${country}-智选
+"
+
+    # 添加到业务分组引用列表（使用智选策略组）
+    country_proxies_list+="
+      - ${country}-智选"
+  done
+
+  # 输出国家策略组配置
+  printf "%s" "$output"
+
+  # 同时输出国家引用列表到全局变量
+  COUNTRY_PROXIES_LIST="$country_proxies_list"
+  export COUNTRY_PROXIES_LIST
+}
+
+# =============================================================================
 # 配置模板渲染
 # =============================================================================
 
@@ -1057,11 +1208,28 @@ render_config_from_tpl() {
   local ui_path="$tmp_render/ui"
   local dns_path="$tmp_render/dns"
   local smart_group_path="$tmp_render/smart_group"
+  local country_groups_path="$tmp_render/country_groups"
 
   # 写入动态内容
   printf "%s" "${UI_CONFIG:-}" >"$ui_path"
   printf "%s" "${DNS_CONFIG:-}" >"$dns_path"
   printf "%s" "${SMART_GROUP_BLOCK:-}" >"$smart_group_path"
+
+  # 识别国家并生成动态策略组
+  if [ -n "${SUB_URL:-}" ] && [ -n "${CONFIG_DIR:-}" ]; then
+    log_info "识别订阅中的国家节点..."
+    detect_countries_from_subscription "$SUB_URL" "$CONFIG_DIR"
+    
+    if [ ${#DETECTED_COUNTRIES[@]} -gt 0 ]; then
+      log_info "生成国家策略组配置..."
+      generate_country_proxy_groups "${DETECTED_COUNTRIES[@]}" >"$country_groups_path"
+      log_debug "国家策略组已生成: $country_groups_path"
+    else
+      printf "" >"$country_groups_path"
+    fi
+  else
+    printf "" >"$country_groups_path"
+  fi
 
   # 使用 AWK 渲染模板
   awk \
@@ -1119,6 +1287,8 @@ render_config_from_tpl() {
     -v UI_PATH="$ui_path" \
     -v DNS_PATH="$dns_path" \
     -v SMART_GROUP_PATH="$smart_group_path" \
+    -v COUNTRY_GROUPS_PATH="$country_groups_path" \
+    -v COUNTRY_PROXIES_LIST="${COUNTRY_PROXIES_LIST:-}" \
     -v SMART_PROXY_LINE="${SMART_PROXY_LINE:-}" \
     -v ADGUARD_RULE_LINE="${ADGUARD_RULE_LINE:-}" \
     '
@@ -1141,10 +1311,11 @@ function replace_all(str, token, val,   pos, out, tlen) {
   if ($0 ~ /^[[:space:]]*\{\{UI_CONFIG\}\}[[:space:]]*$/) { print_file(UI_PATH); next }
   if ($0 ~ /^[[:space:]]*\{\{DNS_CONFIG\}\}[[:space:]]*$/) { print_file(DNS_PATH); next }
   if ($0 ~ /^[[:space:]]*\{\{SMART_GROUP_BLOCK\}\}[[:space:]]*$/) { print_file(SMART_GROUP_PATH); next }
-
+  if ($0 ~ /^[[:space:]]*\{\{COUNTRY_PROXY_GROUPS\}\}[[:space:]]*$/) { print_file(COUNTRY_GROUPS_PATH); next }
   line = $0
   line = replace_all(line, "{{SMART_PROXY_LINE}}", SMART_PROXY_LINE)
   line = replace_all(line, "{{ADGUARD_RULE_LINE}}", ADGUARD_RULE_LINE)
+  line = replace_all(line, "{{COUNTRY_PROXIES_LIST}}", COUNTRY_PROXIES_LIST)
   line = replace_all(line, "{{CLASH_SECRET}}", CLASH_SECRET)
   line = replace_all(line, "{{SUB_URL}}", SUB_URL)
   line = replace_all(line, "{{LAN_SUBNET}}", LAN_SUBNET)

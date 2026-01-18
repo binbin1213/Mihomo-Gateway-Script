@@ -105,11 +105,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
-      - 新加坡-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -117,10 +114,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -128,10 +123,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -139,10 +132,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -150,10 +141,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -161,10 +150,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -172,10 +159,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -183,10 +168,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -194,10 +177,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -205,10 +186,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -216,10 +195,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -227,10 +204,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -238,10 +213,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -249,11 +222,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
-      - 新加坡-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -261,10 +231,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -272,10 +240,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -284,20 +250,16 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
   - name: Crunchyroll
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -305,10 +267,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -316,10 +276,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -327,11 +285,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
-      - 新加坡-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -339,10 +294,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -350,10 +303,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -367,10 +318,8 @@ proxy-groups:
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
-      - 美国-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 直连
       - 拒绝
 
@@ -387,9 +336,8 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
   - name: Microsoft
@@ -397,9 +345,8 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
   - name: Steam
@@ -407,9 +354,8 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
   - name: Games
@@ -417,9 +363,8 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
   - name: 国内
@@ -427,9 +372,8 @@ proxy-groups:
     proxies:
       - 直连
       {{SMART_PROXY_LINE}}
-      - 所有-手选
-      - 香港-手选
-      - 日本-手选
+      - 所有-智选
+{{COUNTRY_PROXIES_LIST}}
       - 拒绝
 
 
@@ -457,6 +401,8 @@ proxy-groups:
     url: "https://cp.cloudflare.com/generate_204"
     interval: 300
     filter: "^((?!(直连|拒绝)).)*$"
+
+{{COUNTRY_PROXY_GROUPS}}
 
   # 香港组
 

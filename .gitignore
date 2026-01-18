@@ -35,3 +35,6 @@ temp/
 *.secret
 *.credentials
 .env.local
+
+# 测试文件
+test-*.sh
