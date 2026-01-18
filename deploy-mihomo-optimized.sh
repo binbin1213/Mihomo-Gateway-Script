@@ -2422,19 +2422,18 @@ uninstall_mihomo() {
   fi
 
   # 删除下载的模板文件
-  log_debug "SCRIPT_DIR=$SCRIPT_DIR"
-  log_debug "检查模板文件: $SCRIPT_DIR/config-region.yaml.tpl"
+  log_info "检查模板文件: $SCRIPT_DIR/config-region.yaml.tpl"
   if [ -f "$SCRIPT_DIR/config-region.yaml.tpl" ]; then
     log_info "删除模板文件: config-region.yaml.tpl"
     run_cmd "rm -f '$SCRIPT_DIR/config-region.yaml.tpl'" || true
   else
-    log_debug "模板文件不存在: $SCRIPT_DIR/config-region.yaml.tpl"
+    log_info "模板文件不存在: $SCRIPT_DIR/config-region.yaml.tpl"
   fi
   if [ -f "$SCRIPT_DIR/config.yaml.tpl" ]; then
     log_info "删除模板文件: config.yaml.tpl"
     run_cmd "rm -f '$SCRIPT_DIR/config.yaml.tpl'" || true
   else
-    log_debug "模板文件不存在: $SCRIPT_DIR/config.yaml.tpl"
+    log_info "模板文件不存在: $SCRIPT_DIR/config.yaml.tpl"
   fi
 
   # 删除 Docker 网络
