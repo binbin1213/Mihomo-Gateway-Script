@@ -8,7 +8,7 @@ set -euo pipefail
 # 全局变量和配置
 # =============================================================================
 
-VERSION="2.0.0"
+VERSION="3.0.0"
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd || true)"
 
