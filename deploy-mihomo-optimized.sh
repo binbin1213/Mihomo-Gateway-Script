@@ -3382,6 +3382,7 @@ show_banner() {
   local yellow=""
   local blue=""
   local cyan=""
+  local bold=""
   local reset=""
 
   if [ -t 1 ]; then
