@@ -72,29 +72,34 @@ declare -r E_SECURITY_VIOLATION=31
 declare -r E_PATH_TRAVERSAL=32
 declare -r E_COMMAND_INJECTION=33
 
-# 错误消息映射
-declare -A ERROR_MESSAGES=(
-  [$E_GENERAL_ERROR]="通用错误"
-  [$E_INVALID_ARGUMENT]="无效的参数"
-  [$E_MISSING_DEPENDENCY]="缺少依赖"
-  [$E_PERMISSION_DENIED]="权限不足"
-  [$E_FILE_NOT_FOUND]="文件不存在"
-  [$E_NETWORK_ERROR]="网络错误"
-  [$E_INVALID_CONFIG]="无效的配置"
-  [$E_INVALID_IP]="无效的 IP 地址"
-  [$E_INVALID_CIDR]="无效的 CIDR 格式"
-  [$E_INVALID_URL]="无效的 URL"
-  [$E_INVALID_PATH]="无效的路径"
-  [$E_DEPLOY_FAILED]="部署失败"
-  [$E_DOCKER_ERROR]="Docker 错误"
-  [$E_SERVICE_ERROR]="服务错误"
-  [$E_SECURITY_VIOLATION]="安全违规"
-  [$E_PATH_TRAVERSAL]="路径遍历检测"
-  [$E_COMMAND_INJECTION]="命令注入检测"
-)
+# 错误消息映射（使用函数而非关联数组以兼容 bash 3.2）
+get_error_message_text() {
+  local error_code="$1"
+  case "$error_code" in
+    $E_SUCCESS) echo "成功" ;;
+    $E_GENERAL_ERROR) echo "通用错误" ;;
+    $E_INVALID_ARGUMENT) echo "无效的参数" ;;
+    $E_MISSING_DEPENDENCY) echo "缺少依赖" ;;
+    $E_PERMISSION_DENIED) echo "权限不足" ;;
+    $E_FILE_NOT_FOUND) echo "文件不存在" ;;
+    $E_NETWORK_ERROR) echo "网络错误" ;;
+    $E_INVALID_CONFIG) echo "无效的配置" ;;
+    $E_INVALID_IP) echo "无效的 IP 地址" ;;
+    $E_INVALID_CIDR) echo "无效的 CIDR 格式" ;;
+    $E_INVALID_URL) echo "无效的 URL" ;;
+    $E_INVALID_PATH) echo "无效的路径" ;;
+    $E_DEPLOY_FAILED) echo "部署失败" ;;
+    $E_DOCKER_ERROR) echo "Docker 错误" ;;
+    $E_SERVICE_ERROR) echo "服务错误" ;;
+    $E_SECURITY_VIOLATION) echo "安全违规" ;;
+    $E_PATH_TRAVERSAL) echo "路径遍历检测" ;;
+    $E_COMMAND_INJECTION) echo "命令注入检测" ;;
+    *) echo "未知错误 (代码: $error_code)" ;;
+  esac
+}
 
 # 错误上下文（用于错误传播）
-declare -a ERROR_CONTEXT=()
+ERROR_CONTEXT=()
 
 # =============================================================================
 # 工具函数
@@ -271,10 +276,8 @@ get_error_message() {
 
   if [ -n "$custom_message" ]; then
     printf "%s" "$custom_message"
-  elif [ -n "${ERROR_MESSAGES[$error_code]:-}" ]; then
-    printf "%s" "${ERROR_MESSAGES[$error_code]}"
   else
-    printf "未知错误 (代码: %s)" "$error_code"
+    get_error_message_text "$error_code"
   fi
 }
 
