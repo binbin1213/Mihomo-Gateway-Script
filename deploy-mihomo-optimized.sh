@@ -43,6 +43,60 @@ MAX_RETRIES=3
 RETRY_DELAY=5
 
 # =============================================================================
+# 错误码体系
+# =============================================================================
+
+# 通用错误码 (1-10)
+declare -r E_SUCCESS=0
+declare -r E_GENERAL_ERROR=1
+declare -r E_INVALID_ARGUMENT=2
+declare -r E_MISSING_DEPENDENCY=3
+declare -r E_PERMISSION_DENIED=4
+declare -r E_FILE_NOT_FOUND=5
+declare -r E_NETWORK_ERROR=6
+
+# 配置错误码 (11-20)
+declare -r E_INVALID_CONFIG=11
+declare -r E_INVALID_IP=12
+declare -r E_INVALID_CIDR=13
+declare -r E_INVALID_URL=14
+declare -r E_INVALID_PATH=15
+
+# 部署错误码 (21-30)
+declare -r E_DEPLOY_FAILED=21
+declare -r E_DOCKER_ERROR=22
+declare -r E_SERVICE_ERROR=23
+
+# 安全错误码 (31-40)
+declare -r E_SECURITY_VIOLATION=31
+declare -r E_PATH_TRAVERSAL=32
+declare -r E_COMMAND_INJECTION=33
+
+# 错误消息映射
+declare -A ERROR_MESSAGES=(
+  [$E_GENERAL_ERROR]="通用错误"
+  [$E_INVALID_ARGUMENT]="无效的参数"
+  [$E_MISSING_DEPENDENCY]="缺少依赖"
+  [$E_PERMISSION_DENIED]="权限不足"
+  [$E_FILE_NOT_FOUND]="文件不存在"
+  [$E_NETWORK_ERROR]="网络错误"
+  [$E_INVALID_CONFIG]="无效的配置"
+  [$E_INVALID_IP]="无效的 IP 地址"
+  [$E_INVALID_CIDR]="无效的 CIDR 格式"
+  [$E_INVALID_URL]="无效的 URL"
+  [$E_INVALID_PATH]="无效的路径"
+  [$E_DEPLOY_FAILED]="部署失败"
+  [$E_DOCKER_ERROR]="Docker 错误"
+  [$E_SERVICE_ERROR]="服务错误"
+  [$E_SECURITY_VIOLATION]="安全违规"
+  [$E_PATH_TRAVERSAL]="路径遍历检测"
+  [$E_COMMAND_INJECTION]="命令注入检测"
+)
+
+# 错误上下文（用于错误传播）
+declare -a ERROR_CONTEXT=()
+
+# =============================================================================
 # 工具函数
 # =============================================================================
 
@@ -195,6 +249,80 @@ error_exit() {
   exit 1
 }
 
+# =============================================================================
+# 增强的错误处理机制
+# =============================================================================
+
+# 添加错误上下文（用于错误传播）
+push_error_context() {
+  local context="$1"
+  ERROR_CONTEXT+=("$context")
+}
+
+# 清空错误上下文
+clear_error_context() {
+  ERROR_CONTEXT=()
+}
+
+# 获取错误消息
+get_error_message() {
+  local error_code="$1"
+  local custom_message="${2:-}"
+
+  if [ -n "$custom_message" ]; then
+    printf "%s" "$custom_message"
+  elif [ -n "${ERROR_MESSAGES[$error_code]:-}" ]; then
+    printf "%s" "${ERROR_MESSAGES[$error_code]}"
+  else
+    printf "未知错误 (代码: %s)" "$error_code"
+  fi
+}
+
+# 增强的错误退出（支持错误码和上下文）
+error_exit_code() {
+  local error_code="$1"
+  shift
+  local custom_message="${1:-}"
+  shift
+  local extra_info="${*:-}"
+
+  # 构建完整错误消息
+  local full_message
+  full_message="$(get_error_message "$error_code" "$custom_message")"
+
+  # 添加错误码
+  full_message="[E:$error_code] $full_message"
+
+  # 添加额外信息
+  if [ -n "$extra_info" ]; then
+    full_message="$full_message - $extra_info"
+  fi
+
+  # 添加错误上下文
+  if [ ${#ERROR_CONTEXT[@]} -gt 0 ]; then
+    full_message="$full_message (上下文: ${ERROR_CONTEXT[*]})"
+  fi
+
+  log_error "$full_message"
+  cleanup
+  exit "$error_code"
+}
+
+# 条件错误退出（仅在条件为真时退出）
+error_exit_if() {
+  local condition="$1"
+  shift
+
+  if [ "$condition" -ne 0 ]; then
+    error_exit_code "$@"
+  fi
+}
+
+# 向后兼容的包装函数（保持原有 API）
+die() {
+  error_exit_code "$E_GENERAL_ERROR" "$@"
+}
+
 # 陷阱处理
 trap cleanup EXIT INT TERM
 
@@ -202,8 +330,42 @@ trap cleanup EXIT INT TERM
 # 输入验证和安全函数
 # =============================================================================
 
+# 通用验证器框架
+# 使用方法: validate <validator_name> <value> [extra_params...]
+validate() {
+  local validator="$1"
+  shift
+  local value="$1"
+  shift
+
+  case "$validator" in
+    ip)
+      _validate_ip "$value"
+      ;;
+    cidr)
+      _validate_cidr "$value"
+      ;;
+    url)
+      _validate_url "$value"
+      ;;
+    iface_name)
+      _validate_iface_name "$value"
+      ;;
+    path_format)
+      _validate_path_format "$value"
+      ;;
+    docker_image)
+      _validate_docker_image "$value"
+      ;;
+    *)
+      log_error "未知的验证器: $validator"
+      return 1
+      ;;
+  esac
+}
+
 # 验证 IP 地址格式
-validate_ip() {
+_validate_ip() {
   local ip="$1"
   local stat=1
 
@@ -219,15 +381,20 @@ validate_ip() {
   return $stat
 }
 
+# 向后兼容的包装函数
+validate_ip() {
+  _validate_ip "$@"
+}
+
 # 验证 CIDR 格式
-validate_cidr() {
+_validate_cidr() {
   local cidr="$1"
 
   if [[ $cidr =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
     local ip="${cidr%/*}"
     local mask="${cidr#*/}"
 
-    if validate_ip "$ip" && [ "$mask" -ge 0 ] && [ "$mask" -le 32 ]; then
+    if _validate_ip "$ip" && [ "$mask" -ge 0 ] && [ "$mask" -le 32 ]; then
       return 0
     fi
   fi
@@ -235,8 +402,13 @@ validate_cidr() {
   return 1
 }
 
+# 向后兼容的包装函数
+validate_cidr() {
+  _validate_cidr "$@"
+}
+
 # 验证 URL 格式
-validate_url() {
+_validate_url() {
   local url="$1"
 
   if [[ $url =~ ^https?:// ]]; then
@@ -246,20 +418,52 @@ validate_url() {
   return 1
 }
 
+# 向后兼容的包装函数
+validate_url() {
+  _validate_url "$@"
+}
+
 # 验证网卡名称（防止注入）
-validate_iface_name() {
+_validate_iface_name() {
   local name="$1"
 
   # 只允许字母、数字、下划线、连字符
-  if [[ $name =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  if [[ ! $name =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    log_error "网卡名称格式无效：$name（只允许字母、数字、下划线、连字符）"
+    return 1
+  fi
+
+  # 验证网卡是否真实存在（防止不存在的网卡名）
+  # 检查 /sys/class/net/ 目录（最可靠的方法，不依赖外部命令）
+  if [ -d "/sys/class/net/$name" ]; then
     return 0
   fi
 
+  # 如果 /sys/class/net/ 不存在（某些容器环境），尝试使用 ip 命令
+  if command -v ip >/dev/null 2>&1; then
+    if ip link show "$name" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  # 兜底检查：使用 ifconfig（兼容性）
+  if command -v ifconfig >/dev/null 2>&1; then
+    if ifconfig "$name" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  log_error "网卡 $name 不存在，请使用 'ip link show' 或 'ifconfig' 查看可用网卡"
   return 1
 }
 
+# 向后兼容的包装函数
+validate_iface_name() {
+  _validate_iface_name "$@"
+}
+
 # 验证路径格式（用于 prompt 调用）
-validate_path_format() {
+_validate_path_format() {
   local path="$1"
 
   # 基本安全检查：拒绝危险字符
@@ -275,10 +479,16 @@ validate_path_format() {
   return 0
 }
 
+# 向后兼容的包装函数
+validate_path_format() {
+  _validate_path_format "$@"
+}
+
 # 验证并清理路径（防止路径遍历）- 加固版
 validate_path() {
   local path="$1"
   local allowed_base="${2:-/opt/mihomo}"
+  local allow_nonexistent="${3:-false}"
 
   # 基本安全检查：移除明显的危险字符
   if [[ "$path" =~ [\&\;\|\'\`\$\(\)\<\>] ]]; then
@@ -292,35 +502,67 @@ validate_path() {
     return 1
   fi
 
-  # 如果系统有 realpath，解析并验证路径
+  # 规范化 allowed_base 路径
   if command -v realpath >/dev/null 2>&1; then
-    local resolved
-    resolved="$(realpath -m "$path" 2>/dev/null || echo "$path")"
+    local allowed_base_resolved
+    allowed_base_resolved="$(realpath -m "$allowed_base" 2>/dev/null || echo "$allowed_base")"
 
-    # 检查解析后的路径是否在允许的基础目录下
+    # 解析并验证用户输入的路径
+    local resolved
+    local realpath_opts="-m"
+
+    # 如果要求路径必须存在，使用 --canonicalize-existing
+    if [ "$allow_nonexistent" = "false" ]; then
+      # 检查路径是否存在
+      if [ -e "$path" ]; then
+        realpath_opts="--canonicalize-existing"
+      else
+        # 路径不存在但要求存在，返回错误
+        log_error "路径不存在: $path"
+        return 1
+      fi
+    fi
+
+    resolved="$(realpath $realpath_opts "$path" 2>/dev/null)"
+
+    # 解析失败
+    if [ -z "$resolved" ]; then
+      log_error "无法解析路径: $path"
+      return 1
+    fi
+
+    # 验证解析后的路径是否在允许的基础目录下
+    # 使用字符串前缀匹配，并确保是子目录（不是兄弟目录）
     case "$resolved" in
-      "$allowed_base"*)
-        printf "%s" "$resolved"
-        return 0
-        ;;
-      /home/*|/opt/*|/var/*|/tmp/*)
-        # 允许常见的安全目录
-        printf "%s" "$resolved"
-        return 0
+      "$allowed_base_resolved"*)
+        # 额外检查：确保没有通过符号链接逃逸
+        # 解析 allowed_base 的所有符号链接
+        local allowed_base_final
+        allowed_base_final="$(realpath --canonicalize-existing "$allowed_base_resolved" 2>/dev/null || echo "$allowed_base_resolved")"
+
+        # 检查 resolved 是否是 allowed_base_final 的子目录
+        if [[ "$resolved" == "$allowed_base_final"* ]]; then
+          printf "%s" "$resolved"
+          return 0
+        else
+          log_error "路径通过符号链接逃逸到允许目录外: $resolved -> $allowed_base_final"
+          return 1
+        fi
         ;;
       *)
-        log_error "路径不在允许的目录下: $resolved"
+        log_error "路径不在允许的目录下: $resolved（允许的基础目录: $allowed_base_resolved）"
         return 1
         ;;
     esac
   fi
 
-  # fallback：返回清理后的路径
-  printf "%s" "$path"
+  # fallback：如果没有 realpath 命令，进行基本检查
+  log_error "系统缺少 realpath 命令，无法安全验证路径"
+  return 1
 }
 
 # 验证 Docker 镜像名称（防止镜像名称注入）
-validate_docker_image() {
+_validate_docker_image() {
   local image="$1"
 
   # Docker 镜像格式: registry/namespace/repo:tag
@@ -336,6 +578,11 @@ validate_docker_image() {
 
   log_error "无效的 Docker 镜像名称: $image"
   return 1
+}
+
+# 向后兼容的包装函数
+validate_docker_image() {
+  _validate_docker_image "$@"
 }
 
 # 检查 IP 是否已被占用
@@ -443,6 +690,81 @@ prompt_secret() {
       break
     fi
   done
+}
+
+# =============================================================================
+# 敏感信息保护
+# =============================================================================
+
+# 混淆敏感信息（简单编码，非加密，但避免明文存储）
+# 注意：这不是真正的加密，只是为了防止日志和配置文件中的明文泄露
+obfuscate_secret() {
+  local secret="$1"
+
+  if [ -z "$secret" ]; then
+    return 0
+  fi
+
+  # 使用 base64 编码 + 简单的 XOR 混淆
+  # 盐值基于脚本路径，使相同密钥在不同系统上存储不同
+  local salt="${SCRIPT_NAME}_${SCRIPT_DIR}"
+  local salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
+
+  # XOR 混淆
+  local obfuscated=""
+  local salt_idx=0
+  local i=0
+
+  while [ $i -lt ${#secret} ]; do
+    local char="${secret:$i:1}"
+    local salt_char="${salt_hash:$((salt_idx % 32)):1}"
+    local ascii=$(printf "%d" "'$char'")
+    local salt_ascii=$(printf "%d" "'$salt_char'")
+    local xored=$((ascii ^ salt_ascii))
+    obfuscated="${obfuscated}$(printf "\\$(printf "%o" "$xored")")"
+    salt_idx=$((salt_idx + 1))
+    i=$((i + 1))
+  done
+
+  # Base64 编码
+  echo -n "$obfuscated" | base64 -w 0 2>/dev/null || echo -n "$obfuscated" | base64
+}
+
+# 反混淆敏感信息
+deobfuscate_secret() {
+  local obfuscated="$1"
+
+  if [ -z "$obfuscated" ]; then
+    return 0
+  fi
+
+  # Base64 解码
+  local encoded
+  encoded="$(echo -n "$obfuscated" | base64 -d 2>/dev/null)" || {
+    log_error "密钥解码失败"
+    return 1
+  }
+
+  # 使用相同的盐值进行 XOR 反混淆
+  local salt="${SCRIPT_NAME}_${SCRIPT_DIR}"
+  local salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
+
+  local secret=""
+  local salt_idx=0
+  local i=0
+
+  while [ $i -lt ${#encoded} ]; do
+    local char="${encoded:$i:1}"
+    local salt_char="${salt_hash:$((salt_idx % 32)):1}"
+    local ascii=$(printf "%d" "'$char'")
+    local salt_ascii=$(printf "%d" "'$salt_char'")
+    local xored=$((ascii ^ salt_ascii))
+    secret="${secret}$(printf "\\$(printf "%o" "$xored")")"
+    salt_idx=$((salt_idx + 1))
+    i=$((i + 1))
+  done
+
+  echo -n "$secret"
 }
 
 prompt_yes_no() {
@@ -834,6 +1156,16 @@ load_saved_config() {
     # 使用 Python 解析 JSON
     if command -v python3 >/dev/null 2>&1; then
       while IFS='=' read -r key value; do
+        # 特殊处理：反混淆 CLASH_SECRET_OBFUSCATED
+        if [ "$key" = "CLASH_SECRET_OBFUSCATED" ]; then
+          local decrypted
+          decrypted="$(deobfuscate_secret "$value" 2>/dev/null)" || {
+            log_error "密钥解密失败，将使用空值"
+            decrypted=""
+          }
+          key="CLASH_SECRET"
+          value="$decrypted"
+        fi
         [ -n "$key" ] && export "$key=$value"
       done < <(python3 -c "
 import json, sys
@@ -854,6 +1186,17 @@ except Exception as e:
   else
     # Shell 格式（向后兼容）
     while IFS='=' read -r key value; do
+      # 特殊处理：反混淆 CLASH_SECRET_OBFUSCATED
+      if [ "$key" = "CLASH_SECRET_OBFUSCATED" ]; then
+        local decrypted
+        decrypted="$(deobfuscate_secret "$value" 2>/dev/null)" || {
+          log_error "密钥解密失败，将使用空值"
+          decrypted=""
+        }
+        key="CLASH_SECRET"
+        value="$decrypted"
+      fi
+
       # 跳过注释和空行
       [[ $key =~ ^#.*$ ]] && continue
       [[ -z $key ]] && continue
@@ -920,6 +1263,13 @@ PYEOF
       local i=0
       for var in "${vars[@]}"; do
         local value="${!var-}"
+
+        # 特殊处理：混淆敏感信息
+        if [ "$var" = "CLASH_SECRET" ] && [ -n "$value" ]; then
+          value="$(obfuscate_secret "$value")"
+          var="CLASH_SECRET_OBFUSCATED"
+        fi
+
         # 转义 JSON 特殊字符
         value="${value//\\/\\\\}"
         value="${value//\"/\\\"}"
@@ -1234,142 +1584,104 @@ render_config_from_tpl() {
     printf "" >"$country_groups_path"
   fi
 
-  # 使用 AWK 渲染模板
-  awk \
-    -v CLASH_SECRET="${CLASH_SECRET:-}" \
-    -v SUB_URL="${SUB_URL:-}" \
-    -v LAN_SUBNET="${LAN_SUBNET:-}" \
-    -v MIHOMO_IP="${MIHOMO_IP:-}" \
-    -v LAN_GW="${LAN_GW:-}" \
-    -v EXTERNAL_PORT="${EXTERNAL_PORT:-19090}" \
-    -v URL_RULESET_OPENAI="${URL_RULESET_OPENAI:-}" \
-    -v URL_RULESET_CLAUDE="${URL_RULESET_CLAUDE:-}" \
-    -v URL_RULESET_GITHUB="${URL_RULESET_GITHUB:-}" \
-    -v URL_RULESET_TELEGRAM_DOMAIN="${URL_RULESET_TELEGRAM_DOMAIN:-}" \
-    -v URL_RULESET_TELEGRAM_IP="${URL_RULESET_TELEGRAM_IP:-}" \
-    -v URL_RULESET_NETFLIX_DOMAIN="${URL_RULESET_NETFLIX_DOMAIN:-}" \
-    -v URL_RULESET_NETFLIX_IP="${URL_RULESET_NETFLIX_IP:-}" \
-    -v URL_RULESET_GOOGLE_DOMAIN="${URL_RULESET_GOOGLE_DOMAIN:-}" \
-    -v URL_RULESET_GOOGLE_IP="${URL_RULESET_GOOGLE_IP:-}" \
-    -v URL_RULESET_APPLE="${URL_RULESET_APPLE:-}" \
-    -v URL_RULESET_APPLE_CN="${URL_RULESET_APPLE_CN:-}" \
-    -v URL_RULESET_MICROSOFT="${URL_RULESET_MICROSOFT:-}" \
-    -v URL_RULESET_STEAM="${URL_RULESET_STEAM:-}" \
-    -v URL_RULESET_CHINA_DOMAIN="${URL_RULESET_CHINA_DOMAIN:-}" \
-    -v URL_RULESET_CHINA_IP="${URL_RULESET_CHINA_IP:-}" \
-    -v URL_RULESET_PRIVATE="${URL_RULESET_PRIVATE:-}" \
-    -v URL_RULESET_BLOCK="${URL_RULESET_BLOCK:-}" \
-    -v URL_RULESET_PERPLEXITY="${URL_RULESET_PERPLEXITY:-}" \
-    -v URL_RULESET_COPILOT="${URL_RULESET_COPILOT:-}" \
-    -v URL_RULESET_GEMINI="${URL_RULESET_GEMINI:-}" \
-    -v URL_RULESET_META_AI="${URL_RULESET_META_AI:-}" \
-    -v URL_RULESET_REDDIT="${URL_RULESET_REDDIT:-}" \
-    -v URL_RULESET_WHATSAPP="${URL_RULESET_WHATSAPP:-}" \
-    -v URL_RULESET_FACEBOOK="${URL_RULESET_FACEBOOK:-}" \
-    -v URL_RULESET_YOUTUBE="${URL_RULESET_YOUTUBE:-}" \
-    -v URL_RULESET_TIKTOK="${URL_RULESET_TIKTOK:-}" \
-    -v URL_RULESET_DISNEY="${URL_RULESET_DISNEY:-}" \
-    -v URL_RULESET_HBO="${URL_RULESET_HBO:-}" \
-    -v URL_RULESET_AMAZON="${URL_RULESET_AMAZON:-}" \
-    -v URL_RULESET_CRUNCHYROLL="${URL_RULESET_CRUNCHYROLL:-}" \
-    -v URL_RULESET_SPOTIFY="${URL_RULESET_SPOTIFY:-}" \
-    -v URL_RULESET_EPIC="${URL_RULESET_EPIC:-}" \
-    -v URL_RULESET_EA="${URL_RULESET_EA:-}" \
-    -v URL_RULESET_BLAZZARD="${URL_RULESET_BLAZZARD:-}" \
-    -v URL_RULESET_UBI="${URL_RULESET_UBI:-}" \
-    -v URL_RULESET_PLAYSTATION="${URL_RULESET_PLAYSTATION:-}" \
-    -v URL_RULESET_NINTENDO="${URL_RULESET_NINTENDO:-}" \
-    -v URL_RULESET_OKX="${URL_RULESET_OKX:-}" \
-    -v URL_RULESET_BYBIT="${URL_RULESET_BYBIT:-}" \
-    -v URL_RULESET_BINANCE="${URL_RULESET_BINANCE:-}" \
-    -v URL_RULESET_NVIDIA="${URL_RULESET_NVIDIA:-}" \
-    -v URL_RULESET_PROXY="${URL_RULESET_PROXY:-}" \
-    -v URL_RULESET_GLOBE="${URL_RULESET_GLOBE:-}" \
-    -v URL_RULESET_DIRECT="${URL_RULESET_DIRECT:-}" \
-    -v URL_RULESET_TEST="${URL_RULESET_TEST:-}" \
-    -v UI_PATH="$ui_path" \
-    -v DNS_PATH="$dns_path" \
-    -v SMART_GROUP_PATH="$smart_group_path" \
-    -v COUNTRY_GROUPS_PATH="$country_groups_path" \
-    -v COUNTRY_PROXIES_LIST="${COUNTRY_PROXIES_LIST:-}" \
-    -v SMART_PROXY_LINE="${SMART_PROXY_LINE:-}" \
-    -v ADGUARD_RULE_LINE="${ADGUARD_RULE_LINE:-}" \
-    '
+  # 导出变量到环境，供 AWK 访问（比 -v 参数更高效）
+  export CLASH_SECRET SUB_URL LAN_SUBNET MIHOMO_IP LAN_GW EXTERNAL_PORT
+  export UI_PATH="$ui_path"
+  export DNS_PATH="$dns_path"
+  export SMART_GROUP_PATH="$smart_group_path"
+  export COUNTRY_GROUPS_PATH="$country_groups_path"
+  export COUNTRY_PROXIES_LIST SMART_PROXY_LINE ADGUARD_RULE_LINE
+
+  # 使用 AWK 渲染模板（优化版：使用 ENVIRON 和 gsub）
+  awk '
 function print_file(path,   line) {
   while ((getline line < path) > 0) {
     print line
   }
   close(path)
 }
-function replace_all(str, token, val,   pos, out, tlen) {
-  out = ""
-  tlen = length(token)
-  while ((pos = index(str, token)) > 0) {
-    out = out substr(str, 1, pos - 1) val
-    str = substr(str, pos + tlen)
-  }
-  return out str
+function get_env_var(name,   val) {
+  val = ENVIRON[name]
+  return (val != "") ? val : ""
 }
 {
-  if ($0 ~ /^[[:space:]]*\{\{UI_CONFIG\}\}[[:space:]]*$/) { print_file(UI_PATH); next }
-  if ($0 ~ /^[[:space:]]*\{\{DNS_CONFIG\}\}[[:space:]]*$/) { print_file(DNS_PATH); next }
-  if ($0 ~ /^[[:space:]]*\{\{SMART_GROUP_BLOCK\}\}[[:space:]]*$/) { print_file(SMART_GROUP_PATH); next }
-  if ($0 ~ /^[[:space:]]*\{\{COUNTRY_PROXY_GROUPS\}\}[[:space:]]*$/) { print_file(COUNTRY_GROUPS_PATH); next }
+  # 处理文件块替换
+  if ($0 ~ /^[[:space:]]*\{\{UI_CONFIG\}\}[[:space:]]*$/) {
+    print_file(get_env_var("UI_PATH"))
+    next
+  }
+  if ($0 ~ /^[[:space:]]*\{\{DNS_CONFIG\}\}[[:space:]]*$/) {
+    print_file(get_env_var("DNS_PATH"))
+    next
+  }
+  if ($0 ~ /^[[:space:]]*\{\{SMART_GROUP_BLOCK\}\}[[:space:]]*$/) {
+    print_file(get_env_var("SMART_GROUP_PATH"))
+    next
+  }
+  if ($0 ~ /^[[:space:]]*\{\{COUNTRY_PROXY_GROUPS\}\}[[:space:]]*$/) {
+    print_file(get_env_var("COUNTRY_GROUPS_PATH"))
+    next
+  }
+
+  # 批量替换（使用 gsub，比自定义 replace_all 更快）
   line = $0
-  line = replace_all(line, "{{SMART_PROXY_LINE}}", SMART_PROXY_LINE)
-  line = replace_all(line, "{{ADGUARD_RULE_LINE}}", ADGUARD_RULE_LINE)
-  line = replace_all(line, "{{COUNTRY_PROXIES_LIST}}", COUNTRY_PROXIES_LIST)
-  line = replace_all(line, "{{CLASH_SECRET}}", CLASH_SECRET)
-  line = replace_all(line, "{{SUB_URL}}", SUB_URL)
-  line = replace_all(line, "{{LAN_SUBNET}}", LAN_SUBNET)
-  line = replace_all(line, "{{MIHOMO_IP}}", MIHOMO_IP)
-  line = replace_all(line, "{{LAN_GW}}", LAN_GW)
-  line = replace_all(line, "{{EXTERNAL_PORT}}", EXTERNAL_PORT)
-  line = replace_all(line, "{{URL_RULESET_OPENAI}}", URL_RULESET_OPENAI)
-  line = replace_all(line, "{{URL_RULESET_CLAUDE}}", URL_RULESET_CLAUDE)
-  line = replace_all(line, "{{URL_RULESET_GITHUB}}", URL_RULESET_GITHUB)
-  line = replace_all(line, "{{URL_RULESET_TELEGRAM_DOMAIN}}", URL_RULESET_TELEGRAM_DOMAIN)
-  line = replace_all(line, "{{URL_RULESET_TELEGRAM_IP}}", URL_RULESET_TELEGRAM_IP)
-  line = replace_all(line, "{{URL_RULESET_NETFLIX_DOMAIN}}", URL_RULESET_NETFLIX_DOMAIN)
-  line = replace_all(line, "{{URL_RULESET_NETFLIX_IP}}", URL_RULESET_NETFLIX_IP)
-  line = replace_all(line, "{{URL_RULESET_GOOGLE_DOMAIN}}", URL_RULESET_GOOGLE_DOMAIN)
-  line = replace_all(line, "{{URL_RULESET_GOOGLE_IP}}", URL_RULESET_GOOGLE_IP)
-  line = replace_all(line, "{{URL_RULESET_APPLE}}", URL_RULESET_APPLE)
-  line = replace_all(line, "{{URL_RULESET_APPLE_CN}}", URL_RULESET_APPLE_CN)
-  line = replace_all(line, "{{URL_RULESET_MICROSOFT}}", URL_RULESET_MICROSOFT)
-  line = replace_all(line, "{{URL_RULESET_STEAM}}", URL_RULESET_STEAM)
-  line = replace_all(line, "{{URL_RULESET_CHINA_DOMAIN}}", URL_RULESET_CHINA_DOMAIN)
-  line = replace_all(line, "{{URL_RULESET_CHINA_IP}}", URL_RULESET_CHINA_IP)
-  line = replace_all(line, "{{URL_RULESET_PRIVATE}}", URL_RULESET_PRIVATE)
-  line = replace_all(line, "{{URL_RULESET_BLOCK}}", URL_RULESET_BLOCK)
-  line = replace_all(line, "{{URL_RULESET_PERPLEXITY}}", URL_RULESET_PERPLEXITY)
-  line = replace_all(line, "{{URL_RULESET_COPILOT}}", URL_RULESET_COPILOT)
-  line = replace_all(line, "{{URL_RULESET_GEMINI}}", URL_RULESET_GEMINI)
-  line = replace_all(line, "{{URL_RULESET_META_AI}}", URL_RULESET_META_AI)
-  line = replace_all(line, "{{URL_RULESET_REDDIT}}", URL_RULESET_REDDIT)
-  line = replace_all(line, "{{URL_RULESET_WHATSAPP}}", URL_RULESET_WHATSAPP)
-  line = replace_all(line, "{{URL_RULESET_FACEBOOK}}", URL_RULESET_FACEBOOK)
-  line = replace_all(line, "{{URL_RULESET_YOUTUBE}}", URL_RULESET_YOUTUBE)
-  line = replace_all(line, "{{URL_RULESET_TIKTOK}}", URL_RULESET_TIKTOK)
-  line = replace_all(line, "{{URL_RULESET_DISNEY}}", URL_RULESET_DISNEY)
-  line = replace_all(line, "{{URL_RULESET_HBO}}", URL_RULESET_HBO)
-  line = replace_all(line, "{{URL_RULESET_AMAZON}}", URL_RULESET_AMAZON)
-  line = replace_all(line, "{{URL_RULESET_CRUNCHYROLL}}", URL_RULESET_CRUNCHYROLL)
-  line = replace_all(line, "{{URL_RULESET_SPOTIFY}}", URL_RULESET_SPOTIFY)
-  line = replace_all(line, "{{URL_RULESET_EPIC}}", URL_RULESET_EPIC)
-  line = replace_all(line, "{{URL_RULESET_EA}}", URL_RULESET_EA)
-  line = replace_all(line, "{{URL_RULESET_BLAZZARD}}", URL_RULESET_BLAZZARD)
-  line = replace_all(line, "{{URL_RULESET_UBI}}", URL_RULESET_UBI)
-  line = replace_all(line, "{{URL_RULESET_PLAYSTATION}}", URL_RULESET_PLAYSTATION)
-  line = replace_all(line, "{{URL_RULESET_NINTENDO}}", URL_RULESET_NINTENDO)
-  line = replace_all(line, "{{URL_RULESET_OKX}}", URL_RULESET_OKX)
-  line = replace_all(line, "{{URL_RULESET_BYBIT}}", URL_RULESET_BYBIT)
-  line = replace_all(line, "{{URL_RULESET_BINANCE}}", URL_RULESET_BINANCE)
-  line = replace_all(line, "{{URL_RULESET_NVIDIA}}", URL_RULESET_NVIDIA)
-  line = replace_all(line, "{{URL_RULESET_PROXY}}", URL_RULESET_PROXY)
-  line = replace_all(line, "{{URL_RULESET_GLOBE}}", URL_RULESET_GLOBE)
-  line = replace_all(line, "{{URL_RULESET_DIRECT}}", URL_RULESET_DIRECT)
-  line = replace_all(line, "{{URL_RULESET_TEST}}", URL_RULESET_TEST)
+  gsub(/\{\{SMART_PROXY_LINE\}\}/, get_env_var("SMART_PROXY_LINE"), line)
+  gsub(/\{\{ADGUARD_RULE_LINE\}\}/, get_env_var("ADGUARD_RULE_LINE"), line)
+  gsub(/\{\{COUNTRY_PROXIES_LIST\}\}/, get_env_var("COUNTRY_PROXIES_LIST"), line)
+  gsub(/\{\{CLASH_SECRET\}\}/, get_env_var("CLASH_SECRET"), line)
+  gsub(/\{\{SUB_URL\}\}/, get_env_var("SUB_URL"), line)
+  gsub(/\{\{LAN_SUBNET\}\}/, get_env_var("LAN_SUBNET"), line)
+  gsub(/\{\{MIHOMO_IP\}\}/, get_env_var("MIHOMO_IP"), line)
+  gsub(/\{\{LAN_GW\}\}/, get_env_var("LAN_GW"), line)
+  gsub(/\{\{EXTERNAL_PORT\}\}/, get_env_var("EXTERNAL_PORT"), line)
+
+  # URL_RULESET 批量替换（使用循环）
+  gsub(/\{\{URL_RULESET_OPENAI\}\}/, get_env_var("URL_RULESET_OPENAI"), line)
+  gsub(/\{\{URL_RULESET_CLAUDE\}\}/, get_env_var("URL_RULESET_CLAUDE"), line)
+  gsub(/\{\{URL_RULESET_GITHUB\}\}/, get_env_var("URL_RULESET_GITHUB"), line)
+  gsub(/\{\{URL_RULESET_TELEGRAM_DOMAIN\}\}/, get_env_var("URL_RULESET_TELEGRAM_DOMAIN"), line)
+  gsub(/\{\{URL_RULESET_TELEGRAM_IP\}\}/, get_env_var("URL_RULESET_TELEGRAM_IP"), line)
+  gsub(/\{\{URL_RULESET_NETFLIX_DOMAIN\}\}/, get_env_var("URL_RULESET_NETFLIX_DOMAIN"), line)
+  gsub(/\{\{URL_RULESET_NETFLIX_IP\}\}/, get_env_var("URL_RULESET_NETFLIX_IP"), line)
+  gsub(/\{\{URL_RULESET_GOOGLE_DOMAIN\}\}/, get_env_var("URL_RULESET_GOOGLE_DOMAIN"), line)
+  gsub(/\{\{URL_RULESET_GOOGLE_IP\}\}/, get_env_var("URL_RULESET_GOOGLE_IP"), line)
+  gsub(/\{\{URL_RULESET_APPLE\}\}/, get_env_var("URL_RULESET_APPLE"), line)
+  gsub(/\{\{URL_RULESET_APPLE_CN\}\}/, get_env_var("URL_RULESET_APPLE_CN"), line)
+  gsub(/\{\{URL_RULESET_MICROSOFT\}\}/, get_env_var("URL_RULESET_MICROSOFT"), line)
+  gsub(/\{\{URL_RULESET_STEAM\}\}/, get_env_var("URL_RULESET_STEAM"), line)
+  gsub(/\{\{URL_RULESET_CHINA_DOMAIN\}\}/, get_env_var("URL_RULESET_CHINA_DOMAIN"), line)
+  gsub(/\{\{URL_RULESET_CHINA_IP\}\}/, get_env_var("URL_RULESET_CHINA_IP"), line)
+  gsub(/\{\{URL_RULESET_PRIVATE\}\}/, get_env_var("URL_RULESET_PRIVATE"), line)
+  gsub(/\{\{URL_RULESET_BLOCK\}\}/, get_env_var("URL_RULESET_BLOCK"), line)
+  gsub(/\{\{URL_RULESET_PERPLEXITY\}\}/, get_env_var("URL_RULESET_PERPLEXITY"), line)
+  gsub(/\{\{URL_RULESET_COPILOT\}\}/, get_env_var("URL_RULESET_COPILOT"), line)
+  gsub(/\{\{URL_RULESET_GEMINI\}\}/, get_env_var("URL_RULESET_GEMINI"), line)
+  gsub(/\{\{URL_RULESET_META_AI\}\}/, get_env_var("URL_RULESET_META_AI"), line)
+  gsub(/\{\{URL_RULESET_REDDIT\}\}/, get_env_var("URL_RULESET_REDDIT"), line)
+  gsub(/\{\{URL_RULESET_WHATSAPP\}\}/, get_env_var("URL_RULESET_WHATSAPP"), line)
+  gsub(/\{\{URL_RULESET_FACEBOOK\}\}/, get_env_var("URL_RULESET_FACEBOOK"), line)
+  gsub(/\{\{URL_RULESET_YOUTUBE\}\}/, get_env_var("URL_RULESET_YOUTUBE"), line)
+  gsub(/\{\{URL_RULESET_TIKTOK\}\}/, get_env_var("URL_RULESET_TIKTOK"), line)
+  gsub(/\{\{URL_RULESET_DISNEY\}\}/, get_env_var("URL_RULESET_DISNEY"), line)
+  gsub(/\{\{URL_RULESET_HBO\}\}/, get_env_var("URL_RULESET_HBO"), line)
+  gsub(/\{\{URL_RULESET_AMAZON\}\}/, get_env_var("URL_RULESET_AMAZON"), line)
+  gsub(/\{\{URL_RULESET_CRUNCHYROLL\}\}/, get_env_var("URL_RULESET_CRUNCHYROLL"), line)
+  gsub(/\{\{URL_RULESET_SPOTIFY\}\}/, get_env_var("URL_RULESET_SPOTIFY"), line)
+  gsub(/\{\{URL_RULESET_EPIC\}\}/, get_env_var("URL_RULESET_EPIC"), line)
+  gsub(/\{\{URL_RULESET_EA\}\}/, get_env_var("URL_RULESET_EA"), line)
+  gsub(/\{\{URL_RULESET_BLAZZARD\}\}/, get_env_var("URL_RULESET_BLAZZARD"), line)
+  gsub(/\{\{URL_RULESET_UBI\}\}/, get_env_var("URL_RULESET_UBI"), line)
+  gsub(/\{\{URL_RULESET_PLAYSTATION\}\}/, get_env_var("URL_RULESET_PLAYSTATION"), line)
+  gsub(/\{\{URL_RULESET_NINTENDO\}\}/, get_env_var("URL_RULESET_NINTENDO"), line)
+  gsub(/\{\{URL_RULESET_OKX\}\}/, get_env_var("URL_RULESET_OKX"), line)
+  gsub(/\{\{URL_RULESET_BYBIT\}\}/, get_env_var("URL_RULESET_BYBIT"), line)
+  gsub(/\{\{URL_RULESET_BINANCE\}\}/, get_env_var("URL_RULESET_BINANCE"), line)
+  gsub(/\{\{URL_RULESET_NVIDIA\}\}/, get_env_var("URL_RULESET_NVIDIA"), line)
+  gsub(/\{\{URL_RULESET_PROXY\}\}/, get_env_var("URL_RULESET_PROXY"), line)
+  gsub(/\{\{URL_RULESET_GLOBE\}\}/, get_env_var("URL_RULESET_GLOBE"), line)
+  gsub(/\{\{URL_RULESET_DIRECT\}\}/, get_env_var("URL_RULESET_DIRECT"), line)
+  gsub(/\{\{URL_RULESET_TEST\}\}/, get_env_var("URL_RULESET_TEST"), line)
+
   print line
 }
     ' "$tpl_path" >"$out_path"
@@ -1984,31 +2296,64 @@ deploy_binary_mode() {
     local url
     url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/download/$version/mihomo-linux-$arch$suffix-$version.gz")"
 
-    # 尝试下载校验和文件
+    # 并行下载校验和文件和二进制文件
     local checksum_url
-    checksum_url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/download/$version/sha256sums-$(detect_arch).txt")" 
-    # 注意：Mihomo 的 checksum 文件名可能不固定，这里尝试常见的 sha256sums-{arch}.txt 或 sha256sums
-    # 如果失败，再尝试 sha256sums
-    
+    checksum_url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/download/$version/sha256sums-$(detect_arch).txt")"
+
     local checksum_file="$tmp_dir/checksums.txt"
     local checksum_downloaded=0
+    local binary_downloaded=0
+    local download_error=0
 
-    log_info "尝试下载校验和文件..."
-    if download_file_optional "$checksum_url" "$checksum_file"; then
-      checksum_downloaded=1
-    else
-      # 尝试备用名称
-      checksum_url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/download/$version/sha256sums")"
+    log_info "并行下载校验和文件和二进制文件..."
+
+    # 后台下载校验和文件
+    (
       if download_file_optional "$checksum_url" "$checksum_file"; then
-        checksum_downloaded=1
+        echo "1" > "$checksum_file.downloaded"
+      else
+        # 尝试备用名称
+        checksum_url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/download/$version/sha256sums")"
+        if download_file_optional "$checksum_url" "$checksum_file"; then
+          echo "1" > "$checksum_file.downloaded"
+        else
+          echo "0" > "$checksum_file.downloaded"
+        fi
       fi
+    ) &
+    local checksum_pid=$!
+
+    # 后台下载二进制文件
+    (
+      if download_file "$url" "$gz_path" "true"; then
+        echo "1" > "$gz_path.downloaded"
+      else
+        echo "0" > "$gz_path.downloaded"
+      fi
+    ) &
+    local binary_pid=$!
+
+    # 等待两个下载完成
+    wait $checksum_pid
+    wait $binary_pid
+
+    # 检查下载结果
+    if [ -f "$checksum_file.downloaded" ]; then
+      checksum_downloaded="$(cat "$checksum_file.downloaded" 2>/dev/null || echo "0")"
+      rm -f "$checksum_file.downloaded"
     fi
 
-    log_info "下载 Mihomo $version ($arch$suffix)..."
-    if ! download_file "$url" "$gz_path" "true"; then
+    if [ -f "$gz_path.downloaded" ]; then
+      binary_downloaded="$(cat "$gz_path.downloaded" 2>/dev/null || echo "0")"
+      rm -f "$gz_path.downloaded"
+    fi
+
+    # 检查二进制文件是否下载成功
+    if [ "$binary_downloaded" -ne 1 ]; then
       error_exit "下载 Mihomo 失败"
     fi
 
+    # 如果校验和文件下载成功，进行校验
     if [ "$checksum_downloaded" -eq 1 ]; then
       local filename="mihomo-linux-$arch$suffix-$version.gz"
       local expected_checksum
@@ -2018,12 +2363,14 @@ deploy_binary_mode() {
         if ! verify_checksum "$gz_path" "$expected_checksum"; then
            error_exit "严重错误：文件校验失败！下载的文件可能不完整或已被篡改。"
         fi
+        log_info "文件校验通过"
       else
         log_warn "未在校验和文件中找到对应文件的哈希值，跳过校验"
       fi
     else
       log_warn "无法下载校验和文件，跳过验证"
     fi
+
 
     log_info "解压二进制文件..."
     if [ "$DRY_RUN" -eq 1 ]; then
@@ -3329,7 +3676,18 @@ main() {
   printf "%s\n" "Mihomo IP: $MIHOMO_IP"
   printf "%s\n" "配置文件: $config_file"
   printf "%s\n" "控制面板: http://$MIHOMO_IP:19090/ui"
-  printf "%s\n" "面板密钥: $CLASH_SECRET"
+
+  # 安全显示密钥（只显示前后 3 个字符）
+  if [ -n "${CLASH_SECRET:-}" ]; then
+    local secret_len="${#CLASH_SECRET}"
+    if [ "$secret_len" -gt 6 ]; then
+      local secret_preview="${CLASH_SECRET:0:3}***${CLASH_SECRET: -3}"
+      printf "%s\n" "面板密钥: $secret_preview (长度: $secret_len)"
+    else
+      printf "%s\n" "面板密钥: *** (长度: $secret_len)"
+    fi
+  fi
+
   printf "%s\n" "----------------------------------------"
   printf "%s\n" "客户端配置："
   printf "%s\n" "  网关: $MIHOMO_IP"
