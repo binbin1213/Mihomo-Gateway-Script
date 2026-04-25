@@ -1,15 +1,15 @@
 # Mihomo 配置文件 - 优化版本
 # 生成时间：自动生成
-# 注意：此文件由 deploy-mihomo.sh 脚本生成，请勿手动编辑
+# 注意：此文件由 deploy-mihomo-optimized.sh 脚本生成，请勿手动编辑
 
 # =============================================================================
 # GeoX 数据库配置
 # =============================================================================
 geodata-mode: true
 geox-url:
-  geoip: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat"
-  geosite: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
-  mmdb: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
+  geoip: "{{GEOX_GEOIP_URL}}"
+  geosite: "{{GEOX_GEOSITE_URL}}"
+  mmdb: "{{GEOX_MMDB_URL}}"
 
 # =============================================================================
 # 基础配置
@@ -22,7 +22,7 @@ log-level: info
 ipv6: false  # 禁用 IPv6（可选，根据网络环境调整）
 
 # 外部控制接口
-external-controller: 0.0.0.0:19090
+external-controller: 0.0.0.0:{{EXTERNAL_PORT}}
 secret: "{{CLASH_SECRET}}"
 
 # =============================================================================
@@ -126,8 +126,8 @@ proxy-groups:
   # Smart 策略组（可选）
 {{SMART_GROUP_BLOCK}}
 
-  # ChatGPT 专用策略组
-  - name: ChatGPT
+  # AI 服务
+  - name: AI
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
@@ -137,8 +137,8 @@ proxy-groups:
       - DIRECT
       - REJECT
 
-  # Claude 专用策略组
-  - name: Claude
+  # 国外服务
+  - name: 国外
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
@@ -148,77 +148,11 @@ proxy-groups:
       - DIRECT
       - REJECT
 
-  # GitHub 专用策略组
-  - name: GitHub
+  # 系统服务
+  - name: 系统
     type: select
     proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
       - DIRECT
-      - REJECT
-
-  # Telegram 专用策略组
-  - name: Telegram
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - DIRECT
-      - REJECT
-
-  # Netflix 专用策略组
-  - name: Netflix
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - DIRECT
-      - REJECT
-
-  # Google 专用策略组
-  - name: Google
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - DIRECT
-      - REJECT
-
-  # Apple 专用策略组
-  - name: Apple
-    type: select
-    proxies:
-      - DIRECT  # 优先直连
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - REJECT
-
-  # Microsoft 专用策略组
-  - name: Microsoft
-    type: select
-    proxies:
-      - DIRECT  # 优先直连
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - REJECT
-
-  # Steam 专用策略组
-  - name: Steam
-    type: select
-    proxies:
-      - DIRECT  # 优先直连
       {{SMART_PROXY_LINE}}
       - 所有-自动
       - 所有-故转
@@ -241,16 +175,6 @@ proxy-groups:
       - 所有-自动
       - 所有-故转
       - 所有-手选
-
-  # 国外网站策略组
-  - name: 国外
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-自动
-      - 所有-故转
-      - 所有-手选
-      - DIRECT
 
   # 其他流量策略组
   - name: 其他
@@ -455,29 +379,23 @@ rules:
   - RULE-SET,block,Block
 
   # AI 服务
-  - RULE-SET,openai,ChatGPT
-  - RULE-SET,claude,Claude
+  - RULE-SET,openai,AI
+  - RULE-SET,claude,AI
 
-  # 开发者服务
-  - RULE-SET,github,GitHub
-
-  # 即时通讯
-  - RULE-SET,telegram_domain,Telegram
-  - RULE-SET,telegram_ip,Telegram,no-resolve
-
-  # 流媒体
-  - RULE-SET,netflix_domain,Netflix
-  - RULE-SET,netflix_ip,Netflix,no-resolve
-
-  # 搜索引擎
-  - RULE-SET,google_domain,Google
-  - RULE-SET,google_ip,Google,no-resolve
+  # 国外服务
+  - RULE-SET,github,国外
+  - RULE-SET,telegram_domain,国外
+  - RULE-SET,telegram_ip,国外,no-resolve
+  - RULE-SET,netflix_domain,国外
+  - RULE-SET,netflix_ip,国外,no-resolve
+  - RULE-SET,google_domain,国外
+  - RULE-SET,google_ip,国外,no-resolve
 
   # 系统服务
-  - RULE-SET,apple_cn,Apple
-  - RULE-SET,apple,Apple
-  - RULE-SET,microsoft,Microsoft
-  - RULE-SET,steam,Steam
+  - RULE-SET,apple_cn,系统
+  - RULE-SET,apple,系统
+  - RULE-SET,microsoft,系统
+  - RULE-SET,steam,系统
 
   # 国内服务
   - RULE-SET,private,国内

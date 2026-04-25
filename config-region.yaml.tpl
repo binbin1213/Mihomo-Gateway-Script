@@ -1,7 +1,7 @@
 # ========================
 # Clash-ALL 地区分组优化配置
 # 生成时间：自动生成
-# 注意：此文件由 deploy-mihomo.sh 脚本生成，请勿手动编辑
+# 注意：此文件由 deploy-mihomo-optimized.sh 脚本生成，请勿手动编辑
 # ========================
 
 # =============================================================================
@@ -9,9 +9,9 @@
 # =============================================================================
 geodata-mode: true
 geox-url:
-  geoip: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat"
-  geosite: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
-  mmdb: "https://ghfast.top/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
+  geoip: "{{GEOX_GEOIP_URL}}"
+  geosite: "{{GEOX_GEOSITE_URL}}"
+  mmdb: "{{GEOX_MMDB_URL}}"
 
 # =============================================================================
 # 基础配置
@@ -103,8 +103,8 @@ proxy-groups:
   # Smart 策略组（可选）
 {{SMART_GROUP_BLOCK}}
 
-  # 业务分流组 - 默认策略（代理优先）
-  - name: ChatGPT
+  # AI 服务
+  - name: AI
     type: select
     proxies:
       {{SMART_PROXY_LINE}}
@@ -113,210 +113,7 @@ proxy-groups:
       - 直连
       - 拒绝
 
-  - name: Claude
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Gemini
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Copilot
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Perplexity
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Meta AI
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: GitHub
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Reddit
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Telegram
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: WhatsApp
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Facebook
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: YouTube
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: TikTok
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Netflix
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: HBO
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Disney
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Amazon
-    type: select
-    proxies:
-      - 直连
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 拒绝
-
-  - name: Crunchyroll
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Spotify
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Nvidia
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Crypto
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Google
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Test
-    type: select
-    proxies:
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 直连
-      - 拒绝
-
-  - name: Block
-    type: select
-    proxies:
-      - 拒绝
-      - 直连
-
+  # 国外服务
   - name: 国外
     type: select
     proxies:
@@ -333,35 +130,8 @@ proxy-groups:
       - 国内
       - 直连
 
-  # 直连优先组
-  - name: Apple
-    type: select
-    proxies:
-      - 直连
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 拒绝
-
-  - name: Microsoft
-    type: select
-    proxies:
-      - 直连
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 拒绝
-
-  - name: Steam
-    type: select
-    proxies:
-      - 直连
-      {{SMART_PROXY_LINE}}
-      - 所有-智选
-{{COUNTRY_PROXIES_LIST}}
-      - 拒绝
-
-  - name: Games
+  # 系统服务
+  - name: 系统
     type: select
     proxies:
       - 直连
@@ -378,6 +148,12 @@ proxy-groups:
       - 所有-智选
 {{COUNTRY_PROXIES_LIST}}
       - 拒绝
+
+  - name: Block
+    type: select
+    proxies:
+      - 拒绝
+      - 直连
 
 
   # 所有节点策略组
@@ -808,65 +584,55 @@ rules:
   - DOMAIN-SUFFIX,cleanbrowsing.org,REJECT
 
   # 测试规则
-  - RULE-SET,test,Test
+  - RULE-SET,test,国外
 
   # 广告拦截
   - RULE-SET,block,Block
 
   # AI 服务
-  - RULE-SET,openai,ChatGPT
-  - RULE-SET,claude,Claude
-  - RULE-SET,perplexity,Perplexity
-  - RULE-SET,copilot,Copilot
-  - RULE-SET,gemini,Gemini
-  - RULE-SET,meta_ai,Meta AI
+  - RULE-SET,openai,AI
+  - RULE-SET,claude,AI
+  - RULE-SET,perplexity,AI
+  - RULE-SET,copilot,AI
+  - RULE-SET,gemini,AI
+  - RULE-SET,meta_ai,AI
 
-  # 开发者服务
-  - RULE-SET,github,GitHub
-  - RULE-SET,reddit,Reddit
-
-  # 即时通讯
-  - RULE-SET,telegram_domain,Telegram
-  - RULE-SET,telegram_ip,Telegram,no-resolve
-  - RULE-SET,whatsapp,WhatsApp
-  - RULE-SET,facebook,Facebook
-
-  # 流媒体
-  - RULE-SET,youtube,YouTube
-  - RULE-SET,tiktok,TikTok
-  - RULE-SET,netflix_domain,Netflix
-  - RULE-SET,netflix_ip,Netflix,no-resolve
-  - RULE-SET,disney,Disney
-  - RULE-SET,hbo,HBO
-  - RULE-SET,amazon,Amazon
-  - RULE-SET,crunchyroll,Crunchyroll
-  - RULE-SET,spotify,Spotify
-
-  # 搜索引擎
-  - RULE-SET,google_domain,Google
-  - RULE-SET,google_ip,Google,no-resolve
+  # 国外服务
+  - RULE-SET,github,国外
+  - RULE-SET,reddit,国外
+  - RULE-SET,telegram_domain,国外
+  - RULE-SET,telegram_ip,国外,no-resolve
+  - RULE-SET,whatsapp,国外
+  - RULE-SET,facebook,国外
+  - RULE-SET,youtube,国外
+  - RULE-SET,tiktok,国外
+  - RULE-SET,netflix_domain,国外
+  - RULE-SET,netflix_ip,国外,no-resolve
+  - RULE-SET,disney,国外
+  - RULE-SET,hbo,国外
+  - RULE-SET,amazon,国外
+  - RULE-SET,crunchyroll,国外
+  - RULE-SET,spotify,国外
+  - RULE-SET,google_domain,国外
+  - RULE-SET,google_ip,国外,no-resolve
+  - RULE-SET,steam,国外
+  - RULE-SET,epic,国外
+  - RULE-SET,ea,国外
+  - RULE-SET,blizzard,国外
+  - RULE-SET,ubi,国外
+  - RULE-SET,playstation,国外
+  - RULE-SET,nintendo,国外
+  - RULE-SET,okx,国外
+  - RULE-SET,bybit,国外
+  - RULE-SET,binance,国外
+  - RULE-SET,nvidia,国外
 
   # 系统服务
-  - RULE-SET,apple_cn,Apple
-  - RULE-SET,apple,Apple
-  - RULE-SET,microsoft,Microsoft
-  - RULE-SET,steam,Steam
+  - RULE-SET,apple_cn,系统
+  - RULE-SET,apple,系统
+  - RULE-SET,microsoft,系统
 
-  # 游戏
-  - RULE-SET,epic,Games
-  - RULE-SET,ea,Games
-  - RULE-SET,blizzard,Games
-  - RULE-SET,ubi,Games
-  - RULE-SET,playstation,Games
-  - RULE-SET,nintendo,Games
-
-  # 加密货币
-  - RULE-SET,okx,Crypto
-  - RULE-SET,bybit,Crypto
-  - RULE-SET,binance,Crypto
-
-  # 其他
-  - RULE-SET,nvidia,Nvidia
+  # 国内服务
   - RULE-SET,proxy,国外
   - RULE-SET,globe,国外
   - RULE-SET,direct,国内

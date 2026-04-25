@@ -236,12 +236,19 @@ cleanup() {
 
   if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
     log_debug "清理临时目录: $TMP_DIR"
-    rm -rf "$TMP_DIR" 2>/dev/null || true
+    if ! rm -rf "$TMP_DIR" 2>/dev/null; then
+      log_warn "清理临时目录失败: $TMP_DIR"
+    fi
   fi
 
   if [ -n "$CLEANUP_HOOKS" ]; then
     printf "%s" "$CLEANUP_HOOKS" | while IFS= read -r hook; do
-      [ -n "$hook" ] && log_debug "执行清理钩子: $hook" && eval "$hook" 2>/dev/null || true
+      if [ -n "$hook" ]; then
+        log_debug "执行清理钩子: $hook"
+        if ! eval "$hook" 2>/dev/null; then
+          log_warn "清理钩子执行失败: $hook"
+        fi
+      fi
     done
   fi
 }
@@ -588,6 +595,82 @@ validate_docker_image() {
   _validate_docker_image "$@"
 }
 
+# 验证二进制构建后缀（允许形如 compatible 或 compatible/go123）
+_validate_variant_suffix() {
+  local variant="$1"
+
+  # 允许为空
+  if [ -z "$variant" ]; then
+    return 0
+  fi
+
+  # 禁止路径穿越和空段
+  case "$variant" in
+    *..*|/*|*/|*//*)
+      return 1
+      ;;
+  esac
+
+  # 每个路径段仅允许字母、数字、下划线、连字符
+  if [[ "$variant" =~ ^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*$ ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+# 向后兼容的包装函数
+validate_variant_suffix() {
+  _validate_variant_suffix "$@"
+}
+
+# shell 单引号转义，用于拼接 run_cmd 命令
+shell_quote() {
+  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# 从 IPv4 CIDR 计算网络地址（纯 shell，兼容 bash 3.2）
+calculate_ipv4_network_from_cidr() {
+  local cidr="$1"
+
+  if ! validate_cidr "$cidr"; then
+    return 1
+  fi
+
+  local ip="${cidr%/*}"
+  local prefix="${cidr#*/}"
+  local OIFS="$IFS"
+  IFS='.'
+  local oct1 oct2 oct3 oct4
+  read -r oct1 oct2 oct3 oct4 <<EOF
+$ip
+EOF
+  IFS="$OIFS"
+
+  local ip_int=0
+  local mask_int=0
+  local network_int=0
+  local host_bits=$((32 - prefix))
+  local net1 net2 net3 net4
+
+  ip_int=$((oct1 * 16777216 + oct2 * 65536 + oct3 * 256 + oct4))
+
+  if [ "$prefix" -eq 0 ]; then
+    mask_int=0
+  else
+    mask_int=$(( (0xFFFFFFFF << host_bits) & 0xFFFFFFFF ))
+  fi
+
+  network_int=$((ip_int & mask_int))
+
+  net1=$(((network_int >> 24) & 255))
+  net2=$(((network_int >> 16) & 255))
+  net3=$(((network_int >> 8) & 255))
+  net4=$((network_int & 255))
+
+  printf "%s" "$net1.$net2.$net3.$net4/$prefix"
+}
+
 # 检查 IP 是否已被占用
 check_ip_available() {
   local ip="$1"
@@ -600,6 +683,110 @@ check_ip_available() {
   fi
 
   return 0
+}
+
+docker_collect_preserved_run_args() {
+  local container_name="$1"
+  local env_args=""
+  local mount_args=""
+  local label_args=""
+  local cap_args=""
+  local security_opt_args=""
+  local restart_args=""
+  local resource_args=""
+  local healthcheck_args=""
+  local devices_args=""
+  local extra
+
+  while IFS= read -r extra; do
+    [ -z "$extra" ] && continue
+    case "$extra" in
+      HOSTNAME=*|PATH=*)
+        continue
+        ;;
+    esac
+    env_args="$env_args -e $(shell_quote "$extra")"
+  done <<EOF
+$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  while IFS='|' read -r source dest rw; do
+    [ -z "${dest:-}" ] && continue
+    local volume_spec="$source:$dest"
+    if [ "${rw:-true}" != "true" ]; then
+      volume_spec="$volume_spec:ro"
+    fi
+    mount_args="$mount_args -v $(shell_quote "$volume_spec")"
+  done <<EOF
+$(docker inspect -f '{{range .Mounts}}{{println .Source "|" .Destination "|" .RW}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  while IFS='|' read -r key value; do
+    [ -z "${key:-}" ] && continue
+    label_args="$label_args --label $(shell_quote "$key=$value")"
+  done <<EOF
+$(docker inspect -f '{{range $k, $v := .Config.Labels}}{{println $k "|" $v}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  while IFS= read -r extra; do
+    [ -z "$extra" ] && continue
+    cap_args="$cap_args --cap-add=$(shell_quote "$extra")"
+  done <<EOF
+$(docker inspect -f '{{range .HostConfig.CapAdd}}{{println .}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  while IFS= read -r extra; do
+    [ -z "$extra" ] && continue
+    security_opt_args="$security_opt_args --security-opt $(shell_quote "$extra")"
+  done <<EOF
+$(docker inspect -f '{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  local restart_name restart_max
+  restart_name="$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$container_name" 2>/dev/null || true)"
+  restart_max="$(docker inspect -f '{{.HostConfig.RestartPolicy.MaximumRetryCount}}' "$container_name" 2>/dev/null || true)"
+  if [ -n "${restart_name:-}" ] && [ "$restart_name" != "no" ]; then
+    restart_args=" --restart=$(shell_quote "$restart_name")"
+    if [ "$restart_name" = "on-failure" ] && [ -n "${restart_max:-}" ] && [ "$restart_max" -gt 0 ] 2>/dev/null; then
+      restart_args=" --restart=$(shell_quote "${restart_name}:${restart_max}")"
+    fi
+  fi
+
+  local memory_bytes nano_cpus
+  memory_bytes="$(docker inspect -f '{{.HostConfig.Memory}}' "$container_name" 2>/dev/null || true)"
+  nano_cpus="$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$container_name" 2>/dev/null || true)"
+  if [ -n "${memory_bytes:-}" ] && [ "$memory_bytes" -gt 0 ] 2>/dev/null; then
+    resource_args="$resource_args --memory=$(shell_quote "$memory_bytes")"
+  fi
+  if [ -n "${nano_cpus:-}" ] && [ "$nano_cpus" -gt 0 ] 2>/dev/null; then
+    local cpus_value
+    cpus_value="$(awk -v n="$nano_cpus" 'BEGIN { printf "%.3f", n/1000000000 }' 2>/dev/null || true)"
+    cpus_value="$(printf "%s" "$cpus_value" | sed 's/\.000$//; s/\.\([0-9]*[1-9]\)0*$/.\1/')"
+    [ -n "${cpus_value:-}" ] && resource_args="$resource_args --cpus=$(shell_quote "$cpus_value")"
+  fi
+
+  while IFS='|' read -r path cgroup; do
+    [ -z "${path:-}" ] && continue
+    devices_args="$devices_args --device $(shell_quote "$path:$path:${cgroup:-rwm}")"
+  done <<EOF
+$(docker inspect -f '{{range .HostConfig.Devices}}{{println .PathOnHost "|" .CgroupPermissions}}{{end}}' "$container_name" 2>/dev/null || true)
+EOF
+
+  local hc_test hc_interval hc_timeout hc_retries hc_start_period
+  hc_test="$(docker inspect -f '{{if .Config.Healthcheck}}{{range $i, $v := .Config.Healthcheck.Test}}{{if $i}}{{printf "|"}}{{end}}{{printf "%s" $v}}{{end}}{{end}}' "$container_name" 2>/dev/null || true)"
+  hc_interval="$(docker inspect -f '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Interval}}{{end}}' "$container_name" 2>/dev/null || true)"
+  hc_timeout="$(docker inspect -f '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Timeout}}{{end}}' "$container_name" 2>/dev/null || true)"
+  hc_retries="$(docker inspect -f '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Retries}}{{end}}' "$container_name" 2>/dev/null || true)"
+  hc_start_period="$(docker inspect -f '{{if .Config.Healthcheck}}{{.Config.Healthcheck.StartPeriod}}{{end}}' "$container_name" 2>/dev/null || true)"
+  if [ -n "${hc_test:-}" ]; then
+    healthcheck_args="$healthcheck_args --health-cmd $(shell_quote "$(printf "%s" "$hc_test" | tr '|' ' ')")"
+    [ -n "${hc_interval:-}" ] && [ "$hc_interval" != "0s" ] && healthcheck_args="$healthcheck_args --health-interval $(shell_quote "$hc_interval")"
+    [ -n "${hc_timeout:-}" ] && [ "$hc_timeout" != "0s" ] && healthcheck_args="$healthcheck_args --health-timeout $(shell_quote "$hc_timeout")"
+    [ -n "${hc_retries:-}" ] && [ "$hc_retries" != "0" ] && healthcheck_args="$healthcheck_args --health-retries $(shell_quote "$hc_retries")"
+    [ -n "${hc_start_period:-}" ] && [ "$hc_start_period" != "0s" ] && healthcheck_args="$healthcheck_args --health-start-period $(shell_quote "$hc_start_period")"
+  fi
+
+  printf "%s" "$restart_args$env_args$mount_args$label_args$cap_args$security_opt_args$resource_args$devices_args$healthcheck_args"
 }
 
 # =============================================================================
@@ -711,7 +898,8 @@ obfuscate_secret() {
   # 使用 base64 编码 + 简单的 XOR 混淆
   # 盐值基于脚本路径，使相同密钥在不同系统上存储不同
   local salt="${SCRIPT_NAME}_${SCRIPT_DIR}"
-  local salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
+  local salt_hash
+  salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
 
   # XOR 混淆
   local obfuscated=""
@@ -721,8 +909,10 @@ obfuscate_secret() {
   while [ $i -lt ${#secret} ]; do
     local char="${secret:$i:1}"
     local salt_char="${salt_hash:$((salt_idx % 32)):1}"
-    local ascii=$(printf "%d" "'$char'")
-    local salt_ascii=$(printf "%d" "'$salt_char'")
+    local ascii
+    local salt_ascii
+    ascii=$(printf "%d" "'$char'")
+    salt_ascii=$(printf "%d" "'$salt_char'")
     local xored=$((ascii ^ salt_ascii))
     obfuscated="${obfuscated}$(printf "\\$(printf "%o" "$xored")")"
     salt_idx=$((salt_idx + 1))
@@ -750,7 +940,8 @@ deobfuscate_secret() {
 
   # 使用相同的盐值进行 XOR 反混淆
   local salt="${SCRIPT_NAME}_${SCRIPT_DIR}"
-  local salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
+  local salt_hash
+  salt_hash="$(echo -n "$salt" | md5sum | cut -d' ' -f1)"
 
   local secret=""
   local salt_idx=0
@@ -759,8 +950,10 @@ deobfuscate_secret() {
   while [ $i -lt ${#encoded} ]; do
     local char="${encoded:$i:1}"
     local salt_char="${salt_hash:$((salt_idx % 32)):1}"
-    local ascii=$(printf "%d" "'$char'")
-    local salt_ascii=$(printf "%d" "'$salt_char'")
+    local ascii
+    local salt_ascii
+    ascii=$(printf "%d" "'$char'")
+    salt_ascii=$(printf "%d" "'$salt_char'")
     local xored=$((ascii ^ salt_ascii))
     secret="${secret}$(printf "\\$(printf "%o" "$xored")")"
     salt_idx=$((salt_idx + 1))
@@ -1100,7 +1293,7 @@ backup_config() {
   local backup_dir="${file}.d"
   mkdir -p "$backup_dir" 2>/dev/null || true
 
-  local backup_file="${backup_dir}/$(basename "$file").$(date +%Y%m%d_%H%M%S).bak"
+  local backup_file="${backup_dir}/$(basename "$file").$(date +%Y%m%d_%H%M%S).$$.$RANDOM.bak"
   cp "$file" "$backup_file" 2>/dev/null || error_exit "无法备份配置文件"
 
   log_info "配置已备份到: $backup_file"
@@ -1234,7 +1427,8 @@ save_config() {
     python_script="$python_script"$
 
     # 使用环境变量传递数据，避免命令注入
-    local tmp_py="$(mktemp)"
+    local tmp_py
+    tmp_py="$(mktemp)"
     cat > "$tmp_py" << 'PYEOF'
 import json
 import os
@@ -1299,9 +1493,39 @@ PYEOF
 # 平台和架构检测
 # =============================================================================
 
+detect_container_runtime() {
+  if [ -f "/.dockerenv" ]; then
+    printf "docker"
+    return 0
+  fi
+
+  if [ -f "/run/.containerenv" ]; then
+    printf "container"
+    return 0
+  fi
+
+  if [ -r /proc/1/cgroup ] && grep -Eq '(docker|containerd|kubepods|podman|lxc)' /proc/1/cgroup 2>/dev/null; then
+    printf "container"
+    return 0
+  fi
+
+  printf ""
+}
+
 detect_platform() {
+  local container_runtime=""
+  container_runtime="$(detect_container_runtime)"
+
   if [ -e /etc.defaults/VERSION ] || [ -e /usr/syno/synoman/webman/index.cgi ]; then
     printf "dsm"
+  elif [ -n "$container_runtime" ]; then
+    if [ -d /etc/pve ]; then
+      printf "linux-container"
+    elif [ -e /etc/os-release ]; then
+      printf "linux-container"
+    else
+      printf "container"
+    fi
   elif [ -d /etc/pve ]; then
     printf "pve"
   elif [ -e /etc/os-release ]; then
@@ -1333,6 +1557,19 @@ detect_arch() {
   esac
 }
 
+is_virtual_interface() {
+  local iface="$1"
+
+  case "$iface" in
+    ""|lo|docker*|br-*|veth*|tun*|wg*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 # =============================================================================
 # 网络配置检测
 # =============================================================================
@@ -1341,39 +1578,59 @@ detect_network_config() {
   log_info "检测网络配置..."
 
   # 获取默认路由
-  local default_route parent_iface lan_gw src_ip addr_cidr
+  local default_route parent_iface lan_gw src_ip addr_cidr addr_cidr_v6
 
   default_route="$(ip route show default 2>/dev/null | head -n 1 || true)"
   parent_iface="$(printf "%s" "$default_route" | awk '{for (i=1;i<=NF;i++) if ($i=="dev") {print $(i+1); exit}}')"
   lan_gw="$(printf "%s" "$default_route" | awk '{for (i=1;i<=NF;i++) if ($i=="via") {print $(i+1); exit}}')"
   src_ip="$(printf "%s" "$default_route" | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')"
 
+  if [ -n "${parent_iface:-}" ] && is_virtual_interface "$parent_iface"; then
+    log_warn "默认路由接口 $parent_iface 看起来像虚拟接口，尝试回退到物理接口探测"
+    parent_iface=""
+  fi
+
   # 回退检测
   if [ -z "${parent_iface:-}" ]; then
-    parent_iface="$(ip -o link show 2>/dev/null | awk -F': ' 'NR==1{print $2; exit}')"
+    while IFS= read -r candidate; do
+      [ -z "${candidate:-}" ] && continue
+      if ! is_virtual_interface "$candidate"; then
+        parent_iface="$candidate"
+        break
+      fi
+    done <<EOF
+$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | sed 's/@.*//')
+EOF
   fi
 
   if [ -z "${lan_gw:-}" ]; then
     lan_gw="$(ip route show 0.0.0.0/0 2>/dev/null | awk '{print $3; exit}' || true)"
   fi
 
+  if [ -z "${parent_iface:-}" ]; then
+    error_exit "无法自动检测到合适的物理网卡，请手动指定 PARENT_IF"
+  fi
+
   # 获取网卡地址和子网
   addr_cidr=""
+  addr_cidr_v6=""
   if [ -n "${parent_iface:-}" ]; then
     addr_cidr="$(ip -o -f inet addr show dev "$parent_iface" 2>/dev/null | awk '{print $4; exit}' || true)"
+    addr_cidr_v6="$(ip -o -f inet6 addr show dev "$parent_iface" scope global 2>/dev/null | awk '{print $4; exit}' || true)"
   fi
 
   # 计算子网
   local lan_subnet=""
-  if command -v python3 >/dev/null 2>&1 && [ -n "${addr_cidr:-}" ]; then
-    lan_subnet="$(ADDR_CIDR="$addr_cidr" python3 - <<'PY'
-import os, ipaddress
-cidr=os.environ.get("ADDR_CIDR","")
-if cidr:
-    iface=ipaddress.ip_interface(cidr)
-    print(str(iface.network))
-PY
-)"
+  if [ -n "${addr_cidr:-}" ]; then
+    lan_subnet="$(calculate_ipv4_network_from_cidr "$addr_cidr" || true)"
+  elif [ -n "${addr_cidr_v6:-}" ]; then
+    error_exit "检测到接口 $parent_iface 仅有 IPv6 地址 ($addr_cidr_v6)，当前脚本仅支持 IPv4 透明网关部署"
+  else
+    error_exit "无法从接口 $parent_iface 检测到 IPv4 地址，请手动检查网络配置"
+  fi
+
+  if [ -z "${lan_subnet:-}" ]; then
+    error_exit "无法根据接口地址计算 IPv4 子网: ${addr_cidr:-空}"
   fi
 
   log_debug "物理网卡: ${parent_iface:-<未检测到>}"
@@ -1589,6 +1846,7 @@ render_config_from_tpl() {
 
   # 导出变量到环境，供 AWK 访问（比 -v 参数更高效）
   export CLASH_SECRET SUB_URL LAN_SUBNET MIHOMO_IP LAN_GW EXTERNAL_PORT
+  export GEOX_GEOIP_URL GEOX_GEOSITE_URL GEOX_MMDB_URL
   export UI_PATH="$ui_path"
   export DNS_PATH="$dns_path"
   export SMART_GROUP_PATH="$smart_group_path"
@@ -1637,6 +1895,9 @@ function get_env_var(name,   val) {
   gsub(/\{\{MIHOMO_IP\}\}/, get_env_var("MIHOMO_IP"), line)
   gsub(/\{\{LAN_GW\}\}/, get_env_var("LAN_GW"), line)
   gsub(/\{\{EXTERNAL_PORT\}\}/, get_env_var("EXTERNAL_PORT"), line)
+  gsub(/\{\{GEOX_GEOIP_URL\}\}/, get_env_var("GEOX_GEOIP_URL"), line)
+  gsub(/\{\{GEOX_GEOSITE_URL\}\}/, get_env_var("GEOX_GEOSITE_URL"), line)
+  gsub(/\{\{GEOX_MMDB_URL\}\}/, get_env_var("GEOX_MMDB_URL"), line)
 
   # URL_RULESET 批量替换（使用循环）
   gsub(/\{\{URL_RULESET_OPENAI\}\}/, get_env_var("URL_RULESET_OPENAI"), line)
@@ -1760,21 +2021,21 @@ get_latest_mihomo_version() {
   releases_latest_url="$(wrap_github_url "https://github.com/MetaCubeX/mihomo/releases/latest")"
 
   if [ "$dl" = "curl" ]; then
-    version="$(curl -fsSL "$api_url" 2>/dev/null \
+    version="$(curl -fsSL --connect-timeout 10 --max-time 30 "$api_url" 2>/dev/null \
       | awk -F'"' '/"tag_name":/{print $4; exit}')"
   else
-    version="$(wget -qO- "$api_url" 2>/dev/null \
+    version="$(wget -qO- -T 30 "$api_url" 2>/dev/null \
       | awk -F'"' '/"tag_name":/{print $4; exit}')"
   fi
 
   if [ -z "$version" ]; then
     if [ "$dl" = "curl" ]; then
       local effective
-      effective="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$releases_latest_url" 2>/dev/null || true)"
+      effective="$(curl -fsSL --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' "$releases_latest_url" 2>/dev/null || true)"
       version="${effective##*/}"
     else
       local location
-      location="$(wget --max-redirect=0 -S -O /dev/null "$releases_latest_url" 2>&1 | awk '/^  Location: /{print $2}' | tail -n 1 | tr -d '\r' || true)"
+      location="$(wget --max-redirect=0 -T 30 -S -O /dev/null "$releases_latest_url" 2>&1 | awk '/^  Location: /{print $2}' | tail -n 1 | tr -d '\r' || true)"
       version="${location##*/}"
     fi
   fi
@@ -1832,6 +2093,7 @@ collect_parameters() {
   USE_GH_PROXY="$(prompt_yes_no "是否使用 GitHub 代理加速资源下载" "${USE_GH_PROXY:-yes}")"
   if [ "$USE_GH_PROXY" = "yes" ]; then
     GH_PROXY_BASE="$(prompt "GitHub 代理地址" "${GH_PROXY_BASE:-https://ghfast.top}")"
+    GH_PROXY_BASE="$(sanitize_url "$GH_PROXY_BASE")"
   fi
 
   # AdGuard Home 集成
@@ -2030,6 +2292,14 @@ generate_dns_config() {
   log_info "生成 DNS 配置..."
 
   if [ "$USE_ADGUARD" = "yes" ]; then
+    if [ -z "${ADGUARD_IP:-}" ] || ! validate_ip "$ADGUARD_IP"; then
+      error_exit "AdGuardHome IP 无效或未设置: ${ADGUARD_IP:-空}"
+    fi
+
+    if [ -z "${LAN_GW:-}" ] || ! validate_ip "$LAN_GW"; then
+      error_exit "默认网关 IP 无效或未设置: ${LAN_GW:-空}"
+    fi
+
     DNS_CONFIG="$(cat <<EOF
 dns:
   enable: true
@@ -2087,6 +2357,10 @@ EOF
 
 generate_rules_config() {
   log_info "生成规则配置..."
+
+  GEOX_GEOIP_URL="$(wrap_github_url "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat")"
+  GEOX_GEOSITE_URL="$(wrap_github_url "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat")"
+  GEOX_MMDB_URL="$(wrap_github_url "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb")"
 
   # 规则集 URL（使用 GitHub 代理）
   URL_RULESET_OPENAI="$(wrap_github_url "https://github.com/metacubex/meta-rules-dat/raw/refs/heads/meta/geo/geosite/openai.mrs")"
@@ -2284,7 +2558,7 @@ deploy_binary_mode() {
     fi
 
     local variant
-    variant="$(prompt "可选构建后缀（如 compatible/go123，留空默认）" "")"
+    variant="$(prompt "可选构建后缀（如 compatible/go123，留空默认）" "" "validate_variant_suffix")"
 
     local suffix=""
     if [ -n "$variant" ]; then
@@ -2601,8 +2875,27 @@ log_msg() {
 
 # 清理日志文件
 clean_log() {
-  if [ -f "$LOG_FILE" ] && [ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null) -gt "$MAX_LOG_SIZE" ]; then
-    tail -n 500 "$LOG_FILE" >"${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+  local lock_dir="${LOG_FILE}.lock"
+  local tmp_file="${LOG_FILE}.tmp.$$"
+  local log_size=0
+
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    return 0
+  fi
+
+  trap 'rmdir "$lock_dir" 2>/dev/null || true' RETURN
+
+  if [ ! -f "$LOG_FILE" ]; then
+    return 0
+  fi
+
+  log_size=$(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+  if [ "$log_size" -gt "$MAX_LOG_SIZE" ]; then
+    if tail -n 500 "$LOG_FILE" >"$tmp_file"; then
+      mv "$tmp_file" "$LOG_FILE"
+    else
+      rm -f "$tmp_file" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -3044,15 +3337,6 @@ update_mihomo_binary() {
 
 update_mihomo_docker() {
   need_cmd docker
-  local tz_mounts=""
-  if [ -e /etc/localtime ]; then
-    tz_mounts="$tz_mounts -v /etc/localtime:/etc/localtime:ro"
-  fi
-  if [ -f /etc/timezone ]; then
-    tz_mounts="$tz_mounts -v /etc/timezone:/etc/timezone:ro"
-  else
-    log_warn "/etc/timezone 不存在，跳过挂载（DSM 常见）"
-  fi
 
   if ! docker ps -a --format '{{.Names}}' | grep -qx mihomo; then
     error_exit "未找到 mihomo 容器，无法执行 Docker 更新"
@@ -3079,22 +3363,23 @@ update_mihomo_docker() {
   config_dir="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/root/.config/mihomo"}}{{.Source}}{{end}}{{end}}' mihomo 2>/dev/null || true)"
   [ -z "${config_dir:-}" ] && error_exit "无法检测 mihomo 容器配置目录挂载"
 
+  local preserved_args
+  preserved_args="$(docker_collect_preserved_run_args mihomo)"
+  if [ -z "${preserved_args:-}" ]; then
+    log_warn "未提取到可继承的容器参数，将仅保留基础网络与镜像配置"
+  fi
+
   log_info "拉取镜像: $image"
   run_cmd "docker pull '$image'"
 
   log_info "重建容器以应用新镜像..."
   run_cmd "docker rm -f mihomo"
   run_cmd "docker run -d --name mihomo \
-    --restart=always \
     --network='$network_name' \
     --ip='$ip' \
-    --cap-add=NET_ADMIN \
-    --device=/dev/net/tun \
     --sysctl net.ipv4.ip_forward=1 \
     --sysctl net.ipv4.conf.all.src_valid_mark=1 \
-    -e TZ=Asia/Shanghai \
-    $tz_mounts \
-    -v '$config_dir:/root/.config/mihomo' \
+    $preserved_args \
     '$image'" || error_exit "启动容器失败"
 
   log_info "Docker 模式更新完成"
@@ -3107,6 +3392,7 @@ do_update() {
       USE_GH_PROXY="$(prompt_yes_no "是否使用 GitHub 代理加速资源下载" "yes")"
       if [ "$USE_GH_PROXY" = "yes" ]; then
         GH_PROXY_BASE="$(prompt "GitHub 代理地址" "${GH_PROXY_BASE:-https://ghfast.top}")"
+        GH_PROXY_BASE="$(sanitize_url "$GH_PROXY_BASE")"
       fi
     else
       USE_GH_PROXY="no"
@@ -3362,10 +3648,33 @@ self_update_script() {
   remote_version="$(awk -F'"' '/^VERSION=/{print $2; exit}' "$tmp" 2>/dev/null || true)"
   [ -z "${remote_version:-}" ] && remote_version="unknown"
 
-  local backup="$script_path.bak.$(date +%Y%m%d-%H%M%S)"
-  cp "$script_path" "$backup" || true
-  mv "$tmp" "$script_path" || true
-  chmod +x "$script_path" 2>/dev/null || true
+  local backup="$script_path.bak.$(date +%Y%m%d-%H%M%S).$$.$RANDOM"
+  cp "$script_path" "$backup" || {
+    rm -f "$tmp"
+    log_warn "脚本备份失败，继续使用当前版本: $backup"
+    return 0
+  }
+
+  if ! bash -n "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    log_warn "下载的新脚本语法校验失败，继续使用当前版本"
+    return 0
+  fi
+
+  if ! mv "$tmp" "$script_path"; then
+    rm -f "$tmp"
+    log_warn "脚本替换失败，继续使用当前版本"
+    return 0
+  fi
+
+  if ! chmod +x "$script_path" 2>/dev/null; then
+    if [ -f "$backup" ]; then
+      cp "$backup" "$script_path" 2>/dev/null || true
+      chmod +x "$script_path" 2>/dev/null || true
+    fi
+    log_warn "新脚本权限设置失败，已尝试回退到备份版本"
+    return 0
+  fi
 
   log_info "脚本已更新（$remote_version），重新执行..."
   exec "$script_path" --install --skip-self-update
@@ -3416,7 +3725,8 @@ show_banner() {
 # =============================================================================
 
 main() {
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
 
   # 解析命令行参数
   while [ $# -gt 0 ]; do
@@ -3531,6 +3841,26 @@ main() {
   # 检测平台
   PLATFORM="$(detect_platform)"
   log_info "检测到平台: $PLATFORM"
+  case "$PLATFORM" in
+    dsm)
+      log_info "平台说明: Synology DSM 环境"
+      ;;
+    pve)
+      log_info "平台说明: Proxmox VE 主机环境"
+      ;;
+    linux-container)
+      log_warn "平台说明: Linux 容器环境，部分宿主机级网络和 systemd 操作可能受限"
+      ;;
+    container)
+      log_warn "平台说明: 容器环境，部分宿主机级网络和 systemd 操作可能受限"
+      ;;
+    linux)
+      log_info "平台说明: 通用 Linux 环境"
+      ;;
+    *)
+      log_warn "平台说明: 未知环境，将按通用 Linux 路径继续，若失败请手动指定参数"
+      ;;
+  esac
 
   # 自动选择部署模式
   if [ -z "$DEPLOY_MODE" ]; then
@@ -3568,12 +3898,12 @@ main() {
   # 创建配置目录
   if [ ! -d "$CONFIG_DIR" ]; then
     log_info "创建配置目录: $CONFIG_DIR"
-    run_cmd "mkdir -p \"$CONFIG_DIR\""
+    run_cmd "mkdir -p '$CONFIG_DIR'"
   fi
 
   # 创建必要的子目录
   log_info "创建配置子目录..."
-  run_cmd "mkdir -p \"$CONFIG_DIR/proxy_providers\" \"$CONFIG_DIR/ruleset\" \"$CONFIG_DIR/ui\"" || true
+  run_cmd "mkdir -p '$CONFIG_DIR/proxy_providers' '$CONFIG_DIR/ruleset' '$CONFIG_DIR/ui'" || true
 
   # 备份现有配置
   local config_file="$CONFIG_DIR/config.yaml"
@@ -3669,7 +3999,8 @@ main() {
   fi
 
   # 显示部署信息
-  local end_time=$(date +%s)
+  local end_time
+  end_time=$(date +%s)
   local duration=$((end_time - start_time))
 
   printf "\n"
