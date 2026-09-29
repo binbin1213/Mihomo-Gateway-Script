@@ -18,7 +18,10 @@ mixed-port: 7890
 allow-lan: true
 bind-address: "*"  # 允许所有接口绑定
 mode: rule
-log-level: info
+# warning 而非 info：TUN 模式下 info 会给每条连接打一行日志，
+# 容器默认 json-file 驱动还会落盘，长期跑对 CPU 和磁盘都是白耗。
+# 排障时临时改回 info 即可。
+log-level: warning
 ipv6: false  # 禁用 IPv6（可选，根据网络环境调整）
 
 # 外部控制接口
@@ -115,12 +118,15 @@ proxy-groups:
     filter: "^((?!(DIRECT|REJECT)).)*$"
 
   # 故障转移策略组 - Fallback
+  # lazy: true —— 只在被引用时才测速。它是备选项，不是默认选中的组，
+  # 没必要跟随主组每 5 分钟做一次全节点探测。
   - name: 所有-故转
     type: fallback
     use:
       - sub
     url: "https://cp.cloudflare.com/generate_204"
     interval: 300
+    lazy: true
     filter: "^((?!(DIRECT|REJECT)).)*$"
 
   # Smart 策略组（可选）
@@ -409,10 +415,13 @@ rules:
 # 性能优化配置
 # =============================================================================
 
-# 缓存配置（可选）
-#profile:
-#  store-selected: true  # 记住选择的节点
-#  store-fake-ip: true    # 缓存 Fake-IP
+# 缓存配置
+# 与 region 模板保持一致（region 默认就开着）：
+# store-selected 让策略组选择的节点重启后不复位，
+# store-fake-ip 缓存 Fake-IP 映射，避免每次重启把所有域名重新解析一遍。
+profile:
+  store-selected: true
+  store-fake-ip: true
 
 # 实验性功能（可选）
 #experimental:

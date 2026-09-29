@@ -20,7 +20,8 @@ mixed-port: 7890
 allow-lan: true
 bind-address: "*"
 mode: rule
-log-level: info
+# warning 而非 info：TUN 模式下 info 会给每条连接打一行日志，长期跑白耗 CPU 和磁盘
+log-level: warning
 ipv6: false
 
 # 外部控制接口
@@ -179,6 +180,7 @@ proxy-groups:
       - sub
     url: "https://cp.cloudflare.com/generate_204"
     interval: 300
+    lazy: true
     filter: "^((?!(直连|拒绝)).)*$"
 
 {{COUNTRY_PROXY_GROUPS}}

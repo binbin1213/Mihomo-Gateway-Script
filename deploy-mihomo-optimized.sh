@@ -1758,24 +1758,29 @@ generate_country_proxy_groups() {
     filter: \"(?=.*(${keywords})).*\"
 "
 
-    # 智选策略组（只选最快节点，tolerance=0）
+    # 智选策略组（按地区选最快节点）
+    # interval 1800 而非 300：这些地区组默认不被业务组选中，只是备选项，
+    # 每 5 分钟全量轮测会让 N 个国家 × M 个节点产生上千次探测，低端机 CPU 抖动明显。
+    # tolerance 50 而非 0：tolerance=0 时任何一次测速波动都会切节点，正在下载/长连接会断。
     output+="
   - name: ${country}-智选
     type: url-test
     use:
       - sub
     url: \"https://cp.cloudflare.com/generate_204\"
-    interval: 300
-    tolerance: 0
+    interval: 1800
+    tolerance: 50
     filter: \"(?=.*(${keywords})).*\"
 "
 
     # 故转策略组（兜底）
+    # lazy: true —— 只有真正被引用时才开始测速。兜底组绝大多数时间闲置，
+    # lazy: false 会让它和智选组一样每轮都跑一遍全节点探测。
     output+="
   - name: ${country}-故转
     type: fallback
-    interval: 300
-    lazy: false
+    interval: 1800
+    lazy: true
     use:
       - sub
     url: \"https://cp.cloudflare.com/generate_204\"
@@ -2309,6 +2314,11 @@ dns:
   fake-ip-filter:
     - +.lan
     - +.local
+    # 补上 geosite:cn：否则国内域名也会被分配 fake IP，导致国内流量也要先经过
+    # TUN 做一遍嗅探和全量规则匹配才直连，白白多一次用户态处理。
+    # 加了它，国内域名向 AdGuardHome 真解析，既过过滤又直连。
+    - geosite:cn
+  fake-ip-filter-mode: rule
   nameserver:
     - $ADGUARD_IP
     - $LAN_GW
@@ -2337,12 +2347,12 @@ dns:
     'geosite:cn':
       - 223.5.5.5
       - 119.29.29.29
-  fallback:
-    - https://cloudflare-dns.com/dns-query
-  fallback-filter:
-    geoip: true
-    ipcidr:
-      - 0.0.0.0/0
+  # 这里原本还有 fallback: https://cloudflare-dns.com/dns-query +
+  # fallback-filter: {geoip: true, ipcidr: [0.0.0.0/0]}，已删除，原因两条：
+  # 1) ipcidr 0.0.0.0/0 匹配任意结果，等于每次真解析都再触发一次兜底查询，兜底变成了主流程；
+  # 2) 兜底目标 cloudflare-dns.com 在国内直连不可达，那些查询必然超时，白占连接池拖慢解析。
+  # fake-ip 模式下境外域名本来就返回 fake IP 不需要真解析，删掉没有功能损失。
+  # 若部署环境在境外、cloudflare-dns.com 可达，可以把这两段加回来。
 
 EOF
 )"
@@ -2413,6 +2423,8 @@ generate_rules_config() {
 
   # Smart 策略配置
   SMART_PROXY_LINE=""
+  # 所有-智选 是业务策略组的默认选中项，interval 保持在用的 300 以便节点故障时及时切换；
+  # 但 tolerance 必须大于 0，否则测速抖动会不断切节点，正在进行的下载和长连接会被打断。
   SMART_GROUP_BLOCK="$(cat <<'EOF'
   - name: 所有-智选
     type: url-test
@@ -2420,7 +2432,7 @@ generate_rules_config() {
       - sub
     url: "https://cp.cloudflare.com/generate_204"
     interval: 300
-    tolerance: 0
+    tolerance: 50
     filter: "^((?!(DIRECT|REJECT|直连|拒绝)).)*$"
 
 EOF
@@ -2497,6 +2509,9 @@ deploy_docker_mode() {
     --device=/dev/net/tun \
     --sysctl net.ipv4.ip_forward=1 \
     --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+    --ulimit nofile=1048576:1048576 \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
     -e TZ=Asia/Shanghai \
     $tz_mounts \
     -v '$CONFIG_DIR:/root/.config/mihomo' \
@@ -2742,6 +2757,9 @@ Type=simple
 ExecStart=/usr/local/bin/mihomo -d $CONFIG_DIR
 Restart=always
 RestartSec=3
+# TUN 网关上每条连接都要占一个 fd，全家设备几百上千条长连接很常见。
+# 不设的话沿用系统默认 1024 软限制，打满后表现为网页间歇性打不开。
+LimitNOFILE=1048576
 
 [Install]
 WantedBy=multi-user.target
@@ -3374,11 +3392,17 @@ update_mihomo_docker() {
 
   log_info "重建容器以应用新镜像..."
   run_cmd "docker rm -f mihomo"
+  # --ulimit / --log-opt 必须在这里重复一遍：docker_collect_preserved_run_args
+  # 只继承 restart/env/mount/label/cap/security-opt/resource/device/healthcheck，
+  # 不收集这两项，重建容器时会被丢掉。
   run_cmd "docker run -d --name mihomo \
     --network='$network_name' \
     --ip='$ip' \
     --sysctl net.ipv4.ip_forward=1 \
     --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+    --ulimit nofile=1048576:1048576 \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
     $preserved_args \
     '$image'" || error_exit "启动容器失败"
 

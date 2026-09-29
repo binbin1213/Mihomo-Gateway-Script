@@ -1,0 +1,10 @@
+# 统一行尾为 LF。
+# 原因：本项目的 .sh 部署脚本和 .tpl 模板最终都要在 Linux 上执行/解析，
+# 一旦被提交成 CRLF，bash 会直接报 "/bin/bash^M: bad interpreter" 而无法运行。
+# 在 Windows 上编辑这些文件时（core.autocrlf 默认 true）很容易把 CRLF 带进来，
+# 这里显式声明 eol=lf，让 Git 无论谁在什么系统上提交，入库的都是 LF。
+*.sh   text eol=lf
+*.tpl  text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
