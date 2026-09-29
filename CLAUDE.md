@@ -26,28 +26,40 @@ Mihomo-Gateway-Script is an automated deployment script for setting up Mihomo (C
 The script is organized into functional sections (marked by comment blocks):
 
 ### Core Sections
-1. **Global Variables** (lines 11-44) - Configuration, logging, retry settings
-2. **Utility Functions** (49-200) - Logging, command execution, cleanup, error handling
-3. **Input Validation** (206-355) - IP, CIDR, URL, interface names, path sanitization
-4. **Interactive Input** (359-548) - User prompts with validation, URL sanitization
-5. **File Operations** (552-716) - Temp directory, download with retry, checksum verification, ZIP extraction
-6. **GitHub/Proxy** (720-761) - GitHub proxy wrapping for resource downloads
-7. **Configuration Management** (765-945) - Backup, validation, load/save (JSON/Shell formats)
-8. **Platform Detection** (949-961) - OS and architecture detection
-9. **Network Detection** (987-1040) - Auto-detect physical interface, gateway, subnet
-10. **Country Detection** (1044-1191) - Parse subscription to detect nodes by country/region
-11. **Template Rendering** (1195-1384) - Render config templates with AWK functions
-12. **Dependency Checks** (1388-1432) - Verify required commands available
-13. **Parameter Collection** (1481-1635) - Interactive deployment wizard
-14. **Dashboard Installation** (1639-1710) - Install metacubexd/zashboard UI
-15. **DNS/Rules Generation** (1714-1865) - Generate DNS and routing rules
-16. **Deployment Functions** (1869-1920) - Docker mode deployment
-17. **Binary Deployment** (1924-2149) - Binary mode with systemd service
-18. **Health Check** (2153-2224) - Post-deployment validation
-19. **Auto-Update** (2228-2355) - Cron-based Mihomo updates
-20. **Uninstall** (2359-2497) - Complete cleanup
-21. **CLI Actions** (2501-2943) - Update, subscription change, menu system
-22. **Main Entry** (3067-3349) - Argument parsing, action routing
+Sections are delimited by `# ====` banner comments. Line ranges below are the actual
+ones in `deploy-mihomo-optimized.sh` (~4066 lines) — re-check them if the script grows.
+
+| # | Section | Lines |
+|---|---------|-------|
+| 1 | Global Variables & Config | 7-44 |
+| 2 | Error Code System | 45-103 |
+| 3 | Utility Functions (logging, command execution, cleanup) | 104-263 |
+| 4 | Enhanced Error Handling (`error_exit`, `run_cmd`, trap/cleanup hooks) | 264-338 |
+| 5 | Input Validation & Security (IP/CIDR/URL/iface, path traversal, SSRF, command safety) | 339-791 |
+| 6 | Interactive Input (prompt helpers with validation) | 792-884 |
+| 7 | Sensitive Info Protection (`prompt_secret`, log redaction) | 885-1065 |
+| 8 | Temp File Management | 1066-1086 |
+| 9 | File Download & Verification (retry, checksum, ZIP extraction) | 1087-1233 |
+| 10 | GitHub Proxy Wrapping | 1234-1278 |
+| 11 | Configuration Management (backup, validation, load/save) | 1279-1491 |
+| 12 | Platform & Architecture Detection | 1492-1572 |
+| 13 | Network Detection (interface, gateway, subnet) | 1573-1649 |
+| 14 | Country Detection & Dynamic Proxy Groups | 1650-1805 |
+| 15 | Template Rendering (AWK) | 1806-1964 |
+| 16 | Dependency Checks | 1965-2012 |
+| 17 | Fetch Latest Version | 2013-2057 |
+| 18 | Parameter Collection (interactive deployment wizard) | 2058-2216 |
+| 19 | Dashboard Installation (metacubexd / zashboard) | 2217-2291 |
+| 20 | DNS Config Generation | 2292-2363 |
+| 21 | Rules Generation | 2364-2465 |
+| 22 | Docker Mode Deployment (`deploy_docker_mode()`) | 2466-2523 |
+| 23 | Binary Mode Deployment (binary install + systemd service) | 2524-2790 |
+| 24 | Health Check | 2791-2865 |
+| 25 | Auto-Update Management (cron) | 2866-3015 |
+| 26 | Uninstall | 3016-3157 |
+| 27 | Usage / CLI Help & Actions (`usage()`, `show_commands()`, menu) | 3158-3706 |
+| 28 | Banner | 3707-3746 |
+| 29 | Main Entry (argument parsing, action routing) | 3747-4066 |
 
 ### Critical Security Features
 - **Input Validation**: All user inputs go through `validate_*` functions before use
