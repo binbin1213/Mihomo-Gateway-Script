@@ -66,8 +66,7 @@ sudo ./deploy-mihomo-optimized.sh --mode binary   # Binary 模式
 | 配置目录 | 配置文件存放位置 | `/opt/mihomo` |
 | GitHub 代理 | 加速资源下载（可选） | `https://gh-proxy.com` |
 | **AdGuardHome 集成** | 上游 DNS 过滤（可选） | `192.168.1.x` / 留空 |
-| **配置模板类型** | 基础/地区分组 | `basic` / `region` |
-| **地区分组策略** | 启用地区节点分组（仅 region 模板） | `yes` / `no` |
+| **配置模板类型** | 基础/地区分组，选 `region` 才会生成地区策略组 | `basic` / `region` |
 | Smart 策略 | 智能选择策略（实验性） | `yes` / `no` |
 | 订阅链接 | 机场订阅地址 | `https://xxx` |
 | 控制面板密钥 | API 访问密钥 | 自定义字符串 |
@@ -258,8 +257,8 @@ systemctl enable mihomo
 **Binary 模式：**
 | 位置 | 说明 |
 |------|------|
-| `/etc/mihomo/` | 配置目录 |
-| `/etc/mihomo/config.yaml` | 主配置文件 |
+| `/opt/mihomo/` | 默认配置目录（可在部署向导中修改） |
+| `/opt/mihomo/config.yaml` | 主配置文件 |
 | `/usr/local/bin/mihomo` | 二进制文件 |
 | `/etc/systemd/system/mihomo.service` | systemd 服务文件 |
 

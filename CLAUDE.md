@@ -16,7 +16,7 @@ Mihomo-Gateway-Script is an automated deployment script for setting up Mihomo (C
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `deploy-mihomo-optimized.sh` | Main deployment script with all functionality | ~3350 |
+| `deploy-mihomo-optimized.sh` | Main deployment script with all functionality | ~4066 |
 | `config.yaml.tpl` | Basic configuration template | Simple proxy groups |
 | `config-region.yaml.tpl` | Region-grouped configuration template | Country-based proxy groups |
 | `README.md` | User documentation (Chinese) | Deployment guide and usage |
@@ -100,7 +100,9 @@ Templates use `{{VARIABLE}}` syntax. The script renders them using AWK:
 - Container config: `/root/.config/mihomo/`
 
 **Binary mode:**
-- Config: `/etc/mihomo/config.yaml`
+- Config dir: `/opt/mihomo/` (default; user can override in the wizard) — main file `config.yaml`
+  (older releases used `/etc/mihomo/`; it only survives as a fallback path when
+  looking up an existing `.deploy_config`)
 - Binary: `/usr/local/bin/mihomo`
 - Service: `/etc/systemd/system/mihomo.service`
 
