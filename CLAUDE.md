@@ -116,10 +116,20 @@ nameserver:
 
 ### Docker Mode
 - Uses `metacubex/mihomo:latest` image by default
-- Creates container named `mihomo`
-- Mounts config directory as volume
-- Sets `net=host` for transparent proxy
-- Configures `privileged` mode for TUN
+- Creates container named `mihomo` with `--restart=always`
+- **Runs on a dedicated `macvlan` network** (`mihomo-macvlan`), not `net=host`:
+  `docker network create -d macvlan --subnet=$LAN_SUBNET --gateway=$LAN_GW -o parent=$PARENT_IF`,
+  and the container is started with `--ip=$MIHOMO_IP` so it holds a real LAN IP that
+  clients can ARP for directly (required for a bypass gateway).
+  Known side effect: with macvlan the **Docker host itself cannot reach that IP**,
+  so the dashboard has to be opened from another machine.
+- Mounts config directory to `/root/.config/mihomo`
+- TUN via `--device=/dev/net/tun` + `--cap-add=NET_ADMIN` — **not** `privileged` mode
+- `--sysctl net.ipv4.ip_forward=1` and `--sysctl net.ipv4.conf.all.src_valid_mark=1`
+- `--ulimit nofile=1048576:1048576` + `--log-opt max-size=10m` + `--log-opt max-file=3`.
+  ⚠️ These two must be passed **again** when recreating the container in
+  `update_mihomo_docker()`: `docker_collect_preserved_run_args()` does not collect
+  ulimit/log-opt, so they would be silently dropped after `--update`.
 
 ### Binary Mode
 - Downloads latest release from GitHub
